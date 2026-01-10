@@ -40,7 +40,7 @@ import { Transaction } from '../../contexts/DataContext';
 import { useRules } from '../../contexts/RulesContext';
 import { evaluateRule } from '../../src/utils/ruleEngine';
 import { formatCurrency } from '../../src/utils/format';
-import { isSimilarDescription } from 'src/utils/insights/projection';
+import { isSimilarDescription, normalizeDescription } from 'src/utils/insights/projection';
 
 // ... (tes imports)
 
@@ -69,20 +69,73 @@ export function RightPanelDetails({
   // --- HOOKS ---
   const { rules } = useRules();
 
-  const matchedPrediction = useMemo(() => {
-    if (!transaction || !recurringPredictions) return null;
+// 🆕 Matching robuste multi-critères (libellé fuzzy + montant + date ±7j)
+// Dans RightPanelDetails.tsx
 
-    // 1. On cherche si l'ID de la transaction sélectionnée est dans une prédiction
-    const byId = recurringPredictions.find(p => 
-      p.transactionIds?.includes(transaction.id)
-    );
-    if (byId) return byId;
+const matchedPrediction = useMemo(() => {
+  // Sécurité de base
+  if (!transaction || !recurringPredictions || recurringPredictions.length === 0) return null;
 
-    // 2. Fallback par nom normalisé
-    return recurringPredictions.find(p => 
-      isSimilarDescription(p.description, transaction.description)
-    );
-  }, [transaction, recurringPredictions]);
+  // Si on a déjà une prédiction passée en props directe, on la prend
+  if (prediction) return prediction;
+
+  console.groupCollapsed(`🕵️‍♀️ [RightPanel] Recherche de récurrence pour : ${transaction.description}`);
+  
+  // 1. Recherche par ID (La méthode royale)
+  const byId = recurringPredictions.find(p => 
+    p.transactionIds && p.transactionIds.includes(transaction.id)
+  );
+
+  if (byId) {
+    console.log("✅ MATCH PAR ID TROUVÉ !", byId.description);
+    console.groupEnd();
+    return byId;
+  }
+
+  console.log("⚠️ Pas de match par ID, tentative de matching flou...");
+
+  // 2. Recherche par similarité (Fuzzy Matching assoupli)
+  const txnAmount = Math.abs(transaction.amount);
+  const txnDate = new Date(transaction.date).getTime();
+
+  const found = recurringPredictions.find(p => {
+    // A. Comparaison de description (Normalisée et Nettoyée)
+    const isDescSimilar = isSimilarDescription(transaction.description, p.description);
+    
+    if (!isDescSimilar) return false;
+
+    // B. Comparaison de montant (On autorise 20% d'écart ou 5€ fixe pour les petits montants)
+    const pAmount = Math.abs(p.amount);
+    const diffAmount = Math.abs(txnAmount - pAmount);
+    const isAmountClose = diffAmount < (txnAmount * 0.20) || diffAmount < 5.0;
+
+    // C. Comparaison de date (On autorise jusqu'à 10 jours de décalage)
+    // Attention : p.lastDate peut être une string
+    const pDate = new Date(p.lastDate).getTime();
+    if (isNaN(pDate)) return false; // Sécurité date invalide
+    
+    const diffDays = Math.abs(txnDate - pDate) / (1000 * 60 * 60 * 24);
+    const isDateClose = diffDays <= 10; 
+
+    // Log des candidats potentiels pour comprendre l'échec
+    console.log(`   Candidat "${p.description}" :`, {
+      matchDesc: isDescSimilar,
+      matchAmount: isAmountClose ? `OK (Diff: ${diffAmount.toFixed(2)})` : `KO (Diff: ${diffAmount.toFixed(2)})`,
+      matchDate: isDateClose ? `OK (${diffDays.toFixed(1)}j)` : `KO (${diffDays.toFixed(1)}j)`
+    });
+
+    return isAmountClose; // Note: On ne force pas la date si description + montant matchent fort
+  });
+
+  if (found) {
+    console.log("✅ MATCH FLOU TROUVÉ :", found.description);
+  } else {
+    console.log("❌ Aucun match trouvé.");
+  }
+  
+  console.groupEnd();
+  return found || null;
+}, [transaction, recurringPredictions, prediction]);
 
   // ... (garde la suite de tes useMemo : category, person, isIncome, etc.)
 
@@ -514,8 +567,7 @@ export function RightPanelDetails({
                       <p className="text-sm text-white/90">
                         {transaction.type === 'online' && '🌐 Paiement en ligne'}
                         {transaction.type === 'physical' && '🏪 Magasin physique'}
-                        {transaction.type === 'withdrawal' && '💵 Retrait'}
-                        {transaction.type === 'transfer' && '🔄 Virement'}
+                        const isSpecialType = (transaction.type as string) === 'withdrawal' || (transaction.type as string) === 'transfer';
                       </p>
                     </div>
                   </div>

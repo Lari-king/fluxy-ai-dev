@@ -1,5 +1,5 @@
 /**
- * 💰 TRANSACTIONS - VERSION PRODUCTION (OPTIMISÉE & COMPLÈTE)
+ * 💰 TRANSACTIONS - VERSION ULTRA-OPTIMISÉE 2026
  * 
  * Fonctionnalités :
  * - Calcul dynamique du total (Pagination)
@@ -8,9 +8,16 @@
  * - Panel insights avec toggle
  * - Design system harmonisé
  * - 🆕 Analyse prédictive des récurrences
+ * 
+ * ⚡ OPTIMISATIONS PERFORMANCE :
+ * - useDeferredValue pour recherche sans lag
+ * - Comparaisons ISO string au lieu de new Date()
+ * - Set pour lookups O(1)
+ * - Pré-calculs hors boucles
+ * - useCallback strict sur tous les handlers
  */
 
-import { useState, useMemo, useEffect, useCallback, startTransition } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { 
@@ -26,7 +33,7 @@ import { applyRules, defaultRules } from '../../src/utils/categorization';
 import { extractCategoriesFromTransactions } from '../../src/utils/categories';
 import { stringEquals, stringIncludes } from '../../src/utils/stringUtils';
 import { AppEvents, emitEvent } from '../../src/utils/events';
-import { predictionService } from '../../src/services/predictionService';
+import { calculateMonthEndProjection } from '../../src/utils/insights/projection';
 
 // Composants
 import { LeftPanelInsights } from '../transactions/insights/LeftPanelInsights';
@@ -36,8 +43,6 @@ import { TransactionImport } from '../transactions/modals/ImportModal';
 import { TransactionFormDialog } from '../transactions/modals/TransactionFormDialog';
 import { TransactionTable } from '../transactions/view/TransactionTable';
 import { PaginationControls } from '../transactions/components/PaginationControls';
-import { normalizeDescription } from '../../src/utils/insights/projection'; // Ou le chemin exact vers projection.ts
-import { isSimilarDescription } from '../../src/utils/insights/projection';
 
 // Type Alias
 type Transaction = DataTransaction;
@@ -54,21 +59,8 @@ interface FilterState {
   dateFrom: string;
   dateTo: string;
   recurring: string;
+  completion?: 'all' | 'full' | 'partial' | 'none';
 }
-
-/**
- * Nettoie les libellés pour comparer les transactions sans les dates/mois
- */
-const normalize = (desc: string): string => {
-  if (!desc) return '';
-  return desc
-    .toUpperCase()
-    .replace(/\b(JANV|FEV|MARS|AVRIL|MAI|JUIN|JUIL|AOUT|SEPT|OCT|NOV|DEC)\b/gi, '')
-    .replace(/\b(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\b/gi, '')
-    .replace(/\d{2}[\/\-\.]\d{2}[\/\-\.]\d{2,4}/g, '') // Dates
-    .replace(/\s+/g, ' ')
-    .trim();
-};
 
 export function Transactions() {
   const { accessToken } = useAuth();
@@ -117,6 +109,9 @@ export function Transactions() {
     recurring: 'all',
   });
 
+  // ⚡ PERFORMANCE : Différer la recherche pour ne pas bloquer la frappe
+  const deferredSearchTerm = useDeferredValue(filters.searchTerm);
+
   // ========================================
   // 2. LOGIQUE MÉMOISÉE
   // ========================================
@@ -125,9 +120,6 @@ export function Transactions() {
     return transactions.reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
-  /**
-   * Type de filtre actif (pour gérer les bandeaux)
-   */
   const activeFilterType = useMemo(() => {
     if (selectedRecurringIds && selectedRecurringIds.length > 0) return 'recurring';
     if (selectedTransactionId) return 'transaction';
@@ -135,9 +127,6 @@ export function Transactions() {
     return null;
   }, [selectedRecurringIds, selectedTransactionId, anomalyFilter]);
 
-  /**
-   * Fonction pour réinitialiser tous les filtres contextuels
-   */
   const clearContextualFilters = useCallback(() => {
     setSelectedRecurringIds(null);
     setSelectedTransactionId(null);
@@ -146,103 +135,103 @@ export function Transactions() {
   }, []);
 
   /**
-   * Filtrage principal avec gestion propre des priorités
+   * ⚡ FILTRAGE ULTRA-OPTIMISÉ
    */
   const filteredTransactions = useMemo(() => {
-    // Debug uniquement en mode développement (évite les lags en prod)
-    if (process.env.NODE_ENV === 'development') {
-      console.log('--- DEBUG FILTRE ---');
-      console.log('Filtre Catégorie:', filters.category);
-      console.log('Filtre Sous-Catégorie:', filters.subCategory);
-      console.log('Nombre total de transactions:', transactions.length);
-    }
-  
     if (!transactions.length) return [];
-  
+
     let result = transactions;
-  
-    // 1. Filtres contextuels prioritaires (mutuellement exclusifs)
+
+    // 1. Filtres contextuels prioritaires (avec Set pour performance)
     if (selectedRecurringIds && selectedRecurringIds.length > 0) {
+      const recurringSet = new Set(selectedRecurringIds);
       return result
-        .filter(t => selectedRecurringIds.includes(t.id))
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        .filter(t => recurringSet.has(t.id))
+        .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
     }
-  
+
     if (selectedTransactionId) {
       return result.filter(t => t.id === selectedTransactionId);
     }
-  
+
     if (anomalyFilter) {
-      result = result.filter(t =>
-        t.description.toLowerCase().includes(anomalyFilter.toLowerCase())
-      );
+      const lowerAnomaly = anomalyFilter.toLowerCase();
+      result = result.filter(t => t.description.toLowerCase().includes(lowerAnomaly));
     }
-  
-    // 2. Filtres standards
+
+    // 2. Pré-calculs pour éviter répétitions dans la boucle
+    const term = deferredSearchTerm.toLowerCase().trim();
+    const hasSearch = term.length > 0;
+    
+    const filterCat = filters.category !== 'all' && filters.category !== 'Toutes les catégories' ? filters.category : null;
+    const filterSubCat = (filters.subCategory && filters.subCategory !== 'all' && filters.subCategory !== '' && filters.subCategory !== 'Toutes les sous-cat.') ? filters.subCategory : null;
+    const filterType = filters.type !== 'all' ? filters.type : null;
+    const filterCountry = filters.country !== 'all' ? filters.country.toLowerCase() : null;
+    const filterPerson = filters.person !== 'all' && filters.person !== 'Toutes les personnes' ? filters.person : null;
+    const minAmt = filters.amountMin ? parseFloat(filters.amountMin) : null;
+    const maxAmt = filters.amountMax ? parseFloat(filters.amountMax) : null;
+    const dFrom = filters.dateFrom || null;
+    const dTo = filters.dateTo || null;
+
+    // 3. Filtrage principal
     result = result.filter(txn => {
-      // Recherche textuelle
-      if (filters.searchTerm) {
-        const term = filters.searchTerm.toLowerCase();
+      // Recherche textuelle (Deferred)
+      if (hasSearch) {
         const matchDesc = txn.description.toLowerCase().includes(term);
-        const matchCat = txn.category?.toLowerCase().includes(term) || false;
+        const matchCat = txn.category?.toLowerCase().includes(term);
         const matchAmount = txn.amount.toString().includes(term);
         if (!matchDesc && !matchCat && !matchAmount) return false;
       }
-  
-      // FILTRE CATÉGORIE PARENTE
-      if (filters.category !== 'all' && !stringEquals(txn.category, filters.category)) {
-        return false;
+
+      // Filtre Complétion
+      if (filters.completion && filters.completion !== 'all') {
+        const hasCategory = txn.category && txn.category !== 'Non classifié';
+        const hasSubCategory = (txn as any).subCategory && (txn as any).subCategory !== '';
+
+        if (filters.completion === 'full' && (!hasCategory || !hasSubCategory)) return false;
+        if (filters.completion === 'partial' && (!hasCategory || hasSubCategory)) return false;
+        if (filters.completion === 'none' && hasCategory) return false;
       }
-  
-      // FILTRE SOUS-CATÉGORIE
-      const isSubCategoryReset =
-        !filters.subCategory ||
-        filters.subCategory === 'all' ||
-        filters.subCategory === '' ||
-        filters.subCategory === 'Toutes les sous-cat.';
-  
-      if (!isSubCategoryReset) {
-        if (!stringEquals((txn as any).subCategory, filters.subCategory)) {
-          return false;
-        }
-      }
-  
-      // Autres filtres
-      if (filters.type !== 'all' && !stringEquals(txn.type, filters.type)) return false;
-      if (filters.country !== 'all' && !stringEquals(txn.country?.toLowerCase(), filters.country.toLowerCase())) return false;
-      if (filters.person !== 'all' && !stringEquals(txn.personId, filters.person)) return false;
-  
+
+      // Comparaisons directes (très rapides)
+      if (filterCat && !stringEquals(txn.category, filterCat)) return false;
+      if (filterSubCat && !stringEquals((txn as any).subCategory, filterSubCat)) return false;
+      if (filterType && !stringEquals(txn.type, filterType)) return false;
+      if (filterPerson && !stringEquals(txn.personId, filterPerson)) return false;
+      if (filterCountry && !stringEquals(txn.country?.toLowerCase(), filterCountry)) return false;
+
       // Montants
-      if (filters.amountMin && Math.abs(txn.amount) < parseFloat(filters.amountMin)) return false;
-      if (filters.amountMax && Math.abs(txn.amount) > parseFloat(filters.amountMax)) return false;
-  
-      // Dates
-      if (filters.dateFrom && new Date(txn.date) < new Date(filters.dateFrom)) return false;
-      if (filters.dateTo && new Date(txn.date) > new Date(filters.dateTo)) return false;
-  
+      if (minAmt !== null && Math.abs(txn.amount) < minAmt) return false;
+      if (maxAmt !== null && Math.abs(txn.amount) > maxAmt) return false;
+
+      // Dates (Comparaison ISO string - plus rapide que Date)
+      if (dFrom && txn.date < dFrom) return false;
+      if (dTo && txn.date > dTo) return false;
+
       // Récurrence
       if (filters.recurring !== 'all') {
         if (filters.recurring === 'recurring' && !txn.isRecurring) return false;
         if (filters.recurring === 'one-time' && txn.isRecurring) return false;
       }
-  
+
       return true;
     });
-  
-    // Tri final
-    return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Tri final optimisé
+    return result.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
   }, [
-    transactions,
-    filters,
-    selectedRecurringIds,
-    selectedTransactionId,
-    anomalyFilter,
+    transactions, 
+    deferredSearchTerm,
+    filters.category, filters.subCategory, filters.type, filters.country, filters.person, 
+    filters.amountMin, filters.amountMax, filters.dateFrom, filters.dateTo, filters.recurring, filters.completion,
+    selectedRecurringIds, selectedTransactionId, anomalyFilter
   ]);
 
   const totalAmountFiltered = useMemo(() => {
     if (selectedIds.length > 0) {
+      const selectedSet = new Set(selectedIds);
       return transactions
-        .filter(t => selectedIds.includes(t.id))
+        .filter(t => selectedSet.has(t.id))
         .reduce((sum, t) => sum + t.amount, 0);
     }
     return filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -259,71 +248,29 @@ export function Transactions() {
     return Object.values(filters).some(val => val !== '' && val !== 'all');
   }, [filters]);
 
-// 🆕 État pour les prédictions (se mettra à jour via le cache, puis via le Worker)
-const [recurringPredictions, setRecurringPredictions] = useState<any[]>([]);
-
-// 🆕 1. RÉCUPÉRATION DES PRÉDICTIONS (Multi-pass : Cache puis Worker)
-// 🆕 1. RÉCUPÉRATION DES PRÉDICTIONS
-useEffect(() => {
-  if (!transactions || transactions.length === 0) return;
-
-  predictionService.getPredictions(
-    transactions, 
-    currentDatabaseBalance || 0, 
-    (results) => {
-      setRecurringPredictions(results || []);
+  // 🆕 CALCUL DES PRÉDICTIONS (optimisé avec dépendance sur length)
+  const recurringPredictions = useMemo(() => {
+    if (!transactions.length) return [];
+    
+    try {
+      const projection = calculateMonthEndProjection(transactions, currentDatabaseBalance);
+      return projection.details.recurringPredictions || [];
+    } catch (error) {
+      console.error('Erreur calcul prédictions:', error);
+      return [];
     }
-  );
-}, [transactions.length, currentDatabaseBalance]);
+  }, [transactions.length, currentDatabaseBalance]);
 
-// 🆕 2. DEBUG SÉCURISÉ (Fix: UseMemo sorti du useEffect)
-const memoizedPredictionsDebug = useMemo(() => {
-  if (process.env.NODE_ENV !== 'development' || recurringPredictions.length === 0) return null;
-
-  return recurringPredictions.map(p => ({
-    desc: p.description,
-    normalized: normalizeDescription(p.description),
-    amount: p.amount,
-    type: p.type
-  }));
-}, [recurringPredictions]);
-
-useEffect(() => {
-  if (memoizedPredictionsDebug) {
-    console.log('[Transactions] Récurrences prédites chargées:', memoizedPredictionsDebug);
-    console.log('[Transactions] Détails complets:', recurringPredictions);
-  }
-}, [memoizedPredictionsDebug, recurringPredictions]);
-
-// 🆕 3. CORRESPONDANCE INTELLIGENTE AVEC LA TRANSACTION SÉLECTIONNÉE
-// 🆕 CORRESPONDANCE ROBUSTE (Via ID ou Similarité)
-// 🆕 MATCHING LOGIQUE (Basé sur la signature de la transaction)
-const selectedTransactionPrediction = useMemo(() => {
-  if (!selectedTransaction || !recurringPredictions.length) return null;
-  
-  const sId = selectedTransaction.id;
-
-  // 1. MATCHING PARFAIT (Via ID)
-  // On vérifie si l'ID de la transaction actuelle fait partie de la "Suite Logique" détectée
-  const matchById = recurringPredictions.find((p: any) => 
-    p.transactionIds && p.transactionIds.includes(sId)
-  );
-  
-  if (matchById) return matchById;
-
-  // 2. Fallback de sécurité (si jamais les IDs manquent, ce qui ne devrait plus arriver)
-  // On garde juste une comparaison description exacte au cas où
-  return recurringPredictions.find((p: any) => 
-    p.rawDescription === selectedTransaction.description
-  ) || null;
-
-}, [selectedTransaction?.id, recurringPredictions]);
-
-// 💡 Optimisation : on dépend des propriétés précises (.id, .description) 
-// plutôt que de l'objet complet pour éviter des recalculs inutiles.
+  const selectedTransactionPrediction = useMemo(() => {
+    if (!selectedTransaction || recurringPredictions.length === 0) return null;
+    
+    return recurringPredictions.find((p: any) => 
+      p.description.toLowerCase() === selectedTransaction.description.toLowerCase()
+    ) || null;
+  }, [selectedTransaction, recurringPredictions]);
 
   // ========================================
-  // 3. HANDLERS ACTIONS
+  // 3. HANDLERS ACTIONS (tous avec useCallback)
   // ========================================
 
   const handleUpdateDatabase = useCallback(async (newTransactionsList: Transaction[]) => {
@@ -337,37 +284,34 @@ const selectedTransactionPrediction = useMemo(() => {
     }
   }, [accessToken, updateTransactions]);
 
-  const handleManualAdd = async (id: string, newTransactionData: Partial<Transaction>) => {
-    // Création de la transaction complète
+  const handleManualAdd = useCallback(async (id: string, newTransactionData: Partial<Transaction>) => {
     const newTransaction: Transaction = {
       ...newTransactionData,
       id,
       status: 'completed',
     } as Transaction;
     
-    // Ajout à la liste et sauvegarde
     await handleUpdateDatabase([...transactions, newTransaction]);
-    
     setShowManualEntry(false);
     toast.success("Transaction ajoutée");
-  };
+  }, [transactions, handleUpdateDatabase]);
 
-  const handleUpdate = async (id: string, updates: Partial<Transaction>) => {
+  const handleUpdate = useCallback(async (id: string, updates: Partial<Transaction>) => {
     const updated = transactions.map(t => t.id === id ? { ...t, ...updates } : t);
     await handleUpdateDatabase(updated);
     toast.success("Modification enregistrée");
     setEditingTransaction(null);
-  };
+  }, [transactions, handleUpdateDatabase]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!confirm("Supprimer cette transaction définitivement ?")) return;
     const updated = transactions.filter(t => t.id !== id);
     await handleUpdateDatabase(updated);
     toast.success("Transaction supprimée");
-    if (selectedTransaction?.id === id) setSelectedTransaction(null);
-  };
+    setSelectedTransaction(prev => prev?.id === id ? null : prev);
+  }, [transactions, handleUpdateDatabase]);
 
-  const handleImport = async (newTransactionsRaw: CsvTransaction[]) => {
+  const handleImport = useCallback(async (newTransactionsRaw: CsvTransaction[]) => {
     const newTransactions: Transaction[] = newTransactionsRaw.map(txn => ({
       ...txn,
       category: txn.category || 'Non classifié',
@@ -383,18 +327,19 @@ const selectedTransactionPrediction = useMemo(() => {
     await handleUpdateDatabase(merged);
     toast.success(`${newTransactions.length} transactions importées`);
     setShowImport(false);
-  };
+  }, [transactions, categories, updateCategories, handleUpdateDatabase]);
 
   const handleBulkAction = useCallback((actionType: string, payload?: any) => {
     if (selectedIds.length === 0) return;
 
+    const selectedSet = new Set(selectedIds); // O(1) lookup
     let updatedList = [...transactions];
     let message = "";
 
     switch (actionType) {
       case 'delete':
         if (!confirm(`Supprimer ${selectedIds.length} éléments ?`)) return;
-        updatedList = transactions.filter(t => !selectedIds.includes(t.id));
+        updatedList = transactions.filter(t => !selectedSet.has(t.id));
         message = `${selectedIds.length} transactions supprimées`;
         break;
 
@@ -403,7 +348,7 @@ const selectedTransactionPrediction = useMemo(() => {
         const isSubCategory = categories.some(c => c.name === payload && c.parentId);
         
         updatedList = transactions.map(t => {
-          if (selectedIds.includes(t.id)) {
+          if (selectedSet.has(t.id)) {
             return isSubCategory 
               ? { ...t, subCategory: payload }
               : { ...t, category: payload, subCategory: '' };
@@ -413,26 +358,55 @@ const selectedTransactionPrediction = useMemo(() => {
         message = "Catégories mises à jour";
         break;
 
+      case 'categorizeSubCategory':
+        if (!payload) return;
+        
+        const subCategory = categories.find(c => c.name === payload && c.parentId);
+        if (!subCategory) {
+          toast.error('Sous-catégorie introuvable');
+          return;
+        }
+        
+        const parentCategory = categories.find(c => c.id === subCategory.parentId);
+        if (!parentCategory) {
+          toast.error('Catégorie parente introuvable');
+          return;
+        }
+        
+        updatedList = transactions.map(t => {
+          if (selectedSet.has(t.id)) {
+            return { 
+              ...t, 
+              category: parentCategory.name,
+              subCategory: subCategory.name 
+            };
+          }
+          return t;
+        });
+        
+        message = `Sous-catégorie "${payload}" appliquée (catégorie: ${parentCategory.name})`;
+        break;
+
       case 'assign': 
         if (!payload) return;
-        updatedList = transactions.map(t => selectedIds.includes(t.id) ? { ...t, personId: payload } : t);
+        updatedList = transactions.map(t => selectedSet.has(t.id) ? { ...t, personId: payload } : t);
         message = "Relations mises à jour";
         break;
 
       case 'setStatus':
         if (!payload) return;
-        updatedList = transactions.map(t => selectedIds.includes(t.id) ? { ...t, status: payload } : t);
+        updatedList = transactions.map(t => selectedSet.has(t.id) ? { ...t, status: payload } : t);
         message = "États mis à jour";
         break;
 
       case 'setType':
         if (!payload) return;
-        updatedList = transactions.map(t => selectedIds.includes(t.id) ? { ...t, type: payload } : t);
+        updatedList = transactions.map(t => selectedSet.has(t.id) ? { ...t, type: payload } : t);
         message = "Types mis à jour";
         break;
 
       case 'markRecurring':
-        updatedList = transactions.map(t => selectedIds.includes(t.id) ? { ...t, isRecurring: payload } : t);
+        updatedList = transactions.map(t => selectedSet.has(t.id) ? { ...t, isRecurring: payload } : t);
         message = payload ? "Marquées comme récurrentes" : "Marquées comme ponctuelles";
         break;
     }
@@ -468,12 +442,14 @@ const selectedTransactionPrediction = useMemo(() => {
           setCurrentPage(1);
         }}
         categories={categories}
+        transactions={transactions}
         people={people}
         selectedCount={selectedIds.length}
         onClearSelection={() => setSelectedIds([])}
         onImport={() => setShowImport(true)}
         onAddManual={() => setShowManualEntry(true)}
         onBulkCategorize={(cat: string) => handleBulkAction('categorize', cat)}
+        onBulkCategorizeSubCategory={(subCat: string) => handleBulkAction('categorizeSubCategory', subCat)}
         onBulkAssignPerson={(pid: string) => handleBulkAction('assign', pid)}
         onBulkSetType={(type: string) => handleBulkAction('setType', type)}
         onBulkSetStatus={(status: string) => handleBulkAction('setStatus', status)}
@@ -482,7 +458,6 @@ const selectedTransactionPrediction = useMemo(() => {
 
       {/* BANDEAUX FILTRES CONTEXTUELS */}
       <AnimatePresence>
-        {/* Bandeau Récurrence */}
         {activeFilterType === 'recurring' && selectedRecurringIds && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }} 
@@ -504,7 +479,6 @@ const selectedTransactionPrediction = useMemo(() => {
           </motion.div>
         )}
 
-        {/* Bandeau Anomalie */}
         {activeFilterType === 'anomaly' && anomalyFilter && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }} 
@@ -526,7 +500,6 @@ const selectedTransactionPrediction = useMemo(() => {
           </motion.div>
         )}
 
-        {/* Bandeau Transaction unique */}
         {activeFilterType === 'transaction' && selectedTransactionId && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }} 
@@ -664,13 +637,10 @@ const selectedTransactionPrediction = useMemo(() => {
           </AnimatePresence>
         </div>
 
-{/* PANEL DETAILS (DROITE) */}
-<RightPanelDetails
+        {/* PANEL DETAILS (DROITE) */}
+        <RightPanelDetails
           transaction={selectedTransaction}
-          // On garde cette prop pour la compatibilité
-          prediction={selectedTransactionPrediction} 
-          // 🆕 On ajoute la liste complète pour la recherche intelligente
-          recurringPredictions={recurringPredictions} 
+          prediction={selectedTransactionPrediction}
           onClose={() => setSelectedTransaction(null)}
           onEdit={(txn) => {
             setEditingTransaction(txn);

@@ -1,17 +1,17 @@
 /**
- * 📊 TRANSACTION TABLE - COMPATIBLE DARK DESIGN SYSTEM
+ * 📊 TRANSACTION TABLE - VERSION OPTIMISÉE
  * 
- * Utilise les variables CSS du design system pour le mode dark
+ * ✅ Toutes vos fonctionnalités conservées
+ * ✅ Checkbox corrigée avec stopPropagation
+ * ✅ Performance optimisée (useMemo/useCallback)
  */
 
-import React, { useState, forwardRef } from 'react';
+import React, { useState, forwardRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction } from '../../../contexts/DataContext';
 import { 
   ArrowUpDown, MoreVertical, Edit, Trash2, Copy, Tag, 
-  TrendingUp, TrendingDown, ExternalLink, 
-  ChevronDown, ChevronRight, Calendar,
-  Globe, MapPin, User, Repeat
+  ChevronDown, ChevronRight, Calendar, Repeat
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Checkbox } from '../../ui/checkbox';
@@ -26,7 +26,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '../../ui/avatar';
 import { formatCurrency } from 'src/utils/format';
 import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -45,7 +44,6 @@ interface TransactionTableProps {
   selectedIds?: string[];
   setSelectedIds?: (ids: string[]) => void;
   selectedTransactionId?: string | null;
-  // ✅ Nouvelle prop de configuration ajoutée
   tableConfig?: {
     dateFormat?: string;
     descLimit?: number;
@@ -84,67 +82,44 @@ export function TransactionTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Toggle row selection
-  const toggleSelection = (id: string) => {
-    console.log('🔍 toggleSelection appelée pour:', id);
-    console.log('🔍 selectedIds avant:', selectedIds);
-    console.log('🔍 setSelectedIds existe?', !!setSelectedIds);
-    
-    if (!setSelectedIds) {
-      console.error('❌ setSelectedIds est undefined!');
-      return;
-    }
+  // 🆕 OPTIMISATION : useCallback pour éviter re-création
+  const toggleSelection = useCallback((id: string) => {
+    if (!setSelectedIds) return;
     
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
       newSelected.delete(id);
-      console.log('✅ Transaction désélectionnée:', id);
     } else {
       newSelected.add(id);
-      console.log('✅ Transaction sélectionnée:', id);
     }
-    const newArray = Array.from(newSelected);
-    console.log('🔍 Nouvel array de sélection:', newArray);
-    setSelectedIds(newArray);
-  };
+    setSelectedIds(Array.from(newSelected));
+  }, [selectedIds, setSelectedIds]);
 
-  // Select all / deselect all
-  const toggleSelectAll = () => {
-    console.log('🔍 toggleSelectAll appelée');
-    console.log('🔍 Nombre de transactions:', transactions.length);
-    console.log('🔍 Nombre de sélectionnées:', selectedIds.length);
-    
-    if (!setSelectedIds) {
-      console.error('❌ setSelectedIds est undefined!');
-      return;
-    }
+  const toggleSelectAll = useCallback(() => {
+    if (!setSelectedIds) return;
     
     if (selectedIds.length === transactions.length) {
-      console.log('✅ Désélection de tout');
       setSelectedIds([]);
     } else {
-      console.log('✅ Sélection de tout');
       setSelectedIds(transactions.map(t => t.id));
     }
-  };
+  }, [selectedIds.length, transactions, setSelectedIds]);
 
-  // Clear selection
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedIds?.([]);
-  };
+  }, [setSelectedIds]);
 
-  // Handle sort
-  const handleSort = (field: SortField) => {
+  const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('desc');
     }
-  };
+  }, [sortField, sortDirection]);
 
-  // Sort transactions
-  const sortedTransactions = React.useMemo(() => {
+  // 🆕 OPTIMISATION : useMemo pour tri
+  const sortedTransactions = useMemo(() => {
     return [...transactions].sort((a, b) => {
       let aValue: any;
       let bValue: any;
@@ -184,8 +159,8 @@ export function TransactionTable({
     });
   }, [transactions, sortField, sortDirection, people]);
 
-  // Group transactions by recurring group
-  const groupedTransactions = React.useMemo(() => {
+  // 🆕 OPTIMISATION : useMemo pour groupes
+  const groupedTransactions = useMemo(() => {
     const groups: { [key: string]: Transaction[] } = {};
     const standalone: Transaction[] = [];
 
@@ -203,12 +178,11 @@ export function TransactionTable({
     return { groups, standalone };
   }, [sortedTransactions]);
 
-  // Get person for transaction
-  const getPerson = (transaction: Transaction) => {
+  // 🆕 OPTIMISATION : useCallback pour getPerson
+  const getPerson = useCallback((transaction: Transaction) => {
     return people.find(p => p.id === transaction.personId);
-  };
+  }, [people]);
 
-  // Render sort icon
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
       return <ArrowUpDown className="size-4 opacity-30" />;
@@ -281,18 +255,26 @@ export function TransactionTable({
     </div>
   );
 
-// TransactionRow
-// TransactionRow
-  const TransactionRowWithRef = forwardRef<HTMLDivElement, TransactionRowProps>(({ transaction, isGrouped = false }, ref) => {
-    // 1. Logique d'état
+  // 🆕 TransactionRow avec React.memo pour performance
+  const TransactionRowWithRef = React.memo(forwardRef<HTMLDivElement, TransactionRowProps>(({ transaction, isGrouped = false }, ref) => {
     const isSelected = selectedIds.includes(transaction.id);
     const person = getPerson(transaction);
     const isIncome = transaction.amount > 0;
     const isRecurring = !!transaction.isRecurring || !!transaction.recurringGroupId;
     const isActiveRow = selectedTransactionId === transaction.id;
-
-    // 2. Calcul du statut temporel
     const isFuture = new Date(transaction.date) > new Date();
+
+    // 🆕 CORRECTION CHECKBOX : Handler avec useCallback
+    const handleCheckboxChange = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation();
+      toggleSelection(transaction.id);
+    }, [transaction.id]);
+
+    const handleRowClick = useCallback((e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-no-row-click]')) return;
+      onTransactionClick(transaction);
+    }, [transaction]);
 
     return (
       <motion.div
@@ -309,15 +291,14 @@ export function TransactionTable({
           ${isActiveRow ? 'bg-[var(--color-primary)]/20 border-l-4 border-l-[var(--color-primary)] shadow-lg' : ''}
           ${isGrouped ? 'bg-[var(--bg-glass)]/30' : ''}
         `}
-        onClick={(e) => {
-          const target = e.target as HTMLElement;
-          // Empêche le clic de ligne si on clique sur la checkbox ou le menu
-          if (target.closest('[data-no-row-click]')) return;
-          onTransactionClick(transaction); 
-        }}
+        onClick={handleRowClick}
       >
-        {/* ✅ Checkbox - Crucial pour les actions de masse */}
-        <div className="flex items-center justify-center" data-no-row-click>
+        {/* ✅ CHECKBOX CORRIGÉE avec stopPropagation */}
+        <div 
+          className="flex items-center justify-center" 
+          data-no-row-click
+          onClick={handleCheckboxChange}
+        >
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => toggleSelection(transaction.id)}
@@ -325,27 +306,26 @@ export function TransactionTable({
           />
         </div>
 
-        {/* ✅ Date & Statut (Avenir / Réalisé) */}
+        {/* Date & Statut */}
         <div className="flex flex-col justify-center">
-  <span className="text-sm font-medium text-[var(--color-text-primary)]">
-    {(() => {
-      try {
-        if (!transaction.date) return 'Date inconnue';
-        const parsedDate = parseISO(transaction.date);
-        // Vérifie si la date est valide avant de formater
-        if (isNaN(parsedDate.getTime())) return 'Date invalide';
-        return format(parsedDate, 'dd/MM/yyyy');
-      } catch (e) {
-        return 'Format erroné';
-      }
-    })()}
-  </span>
-  <span className={`text-[10px] uppercase font-bold tracking-wider ${isFuture ? 'text-amber-500' : 'text-emerald-500'}`}>
-    {isFuture ? 'À venir' : 'Réalisé'}
-  </span>
-</div>
+          <span className="text-sm font-medium text-[var(--color-text-primary)]">
+            {(() => {
+              try {
+                if (!transaction.date) return 'Date inconnue';
+                const parsedDate = parseISO(transaction.date);
+                if (isNaN(parsedDate.getTime())) return 'Date invalide';
+                return format(parsedDate, 'dd/MM/yyyy');
+              } catch (e) {
+                return 'Format erroné';
+              }
+            })()}
+          </span>
+          <span className={`text-[10px] uppercase font-bold tracking-wider ${isFuture ? 'text-amber-500' : 'text-emerald-500'}`}>
+            {isFuture ? 'À venir' : 'Réalisé'}
+          </span>
+        </div>
 
-        {/* Description + Tooltip natif (sans le ?) */}
+        {/* Description */}
         <div className="flex items-center gap-3 min-w-0">
           {transaction.brandLogo && (
             <img 
@@ -358,7 +338,7 @@ export function TransactionTable({
             <div className="flex items-center gap-2">
               <span 
                 className="truncate text-sm text-[var(--color-text-primary)] font-medium"
-                title={transaction.description} // Apparaît après 1s de survol immobile
+                title={transaction.description}
               >
                 {transaction.description}
               </span>
@@ -386,7 +366,7 @@ export function TransactionTable({
           )}
         </div>
 
-        {/* ✅ Sous-catégorie (Texte Blanc sur fond gris) */}
+        {/* Sous-catégorie */}
         <div className="flex items-center gap-2 min-w-0">
           {(transaction as any).subCategory && (
             <span className="text-xs px-2 py-1 rounded-md bg-white/10 text-white border border-white/20 truncate">
@@ -419,7 +399,7 @@ export function TransactionTable({
           </span>
         </div>
 
-        {/* Menu Actions individuelles */}
+        {/* Menu Actions */}
         <div className="flex items-center justify-center" data-no-row-click>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -448,18 +428,18 @@ export function TransactionTable({
         </div>
       </motion.div>
     );
-  });
+  }));
   
   TransactionRowWithRef.displayName = 'TransactionRow';
 
-  const RecurringGroupRow = ({ groupId, groupTransactions }: { groupId: string; groupTransactions: Transaction[] }) => {
+  const RecurringGroupRow = React.memo(({ groupId, groupTransactions }: { groupId: string; groupTransactions: Transaction[] }) => {
     const isExpanded = expandedGroups.has(groupId);
     const firstTxn = groupTransactions[0];
     const totalAmount = groupTransactions.reduce((sum, t) => sum + t.amount, 0);
     const avgAmount = totalAmount / groupTransactions.length;
     const isIncome = avgAmount > 0;
 
-    const toggleExpand = () => {
+    const toggleExpand = useCallback(() => {
       const newExpanded = new Set(expandedGroups);
       if (isExpanded) {
         newExpanded.delete(groupId);
@@ -467,7 +447,7 @@ export function TransactionTable({
         newExpanded.add(groupId);
       }
       setExpandedGroups(newExpanded);
-    };
+    }, [isExpanded, groupId]);
 
     return (
       <div>
@@ -475,14 +455,12 @@ export function TransactionTable({
           className="grid grid-cols-[40px_110px_minmax(180px,1fr)_140px_120px_160px_120px_50px] gap-2 px-6 py-3 border-b border-[var(--color-border-primary)] bg-[var(--bg-glass)]/50 hover:bg-[var(--bg-glass)] transition-colors cursor-pointer"
           onClick={toggleExpand}
         >
-          {/* Expand button */}
           <div className="flex items-center justify-center">
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
               {isExpanded ? <ChevronDown className="size-4 text-[var(--color-text-secondary)]" /> : <ChevronRight className="size-4 text-[var(--color-text-secondary)]" />}
             </Button>
           </div>
 
-          {/* Badge count */}
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="gap-1 text-xs border-[var(--color-secondary-border)] bg-[var(--color-secondary-bg)] text-[var(--color-secondary)]">
               <Tag className="size-3" />
@@ -490,7 +468,6 @@ export function TransactionTable({
             </Badge>
           </div>
 
-          {/* Description */}
           <div className="flex items-center gap-3 min-w-0">
             {firstTxn.brandLogo && (
               <img 
@@ -509,7 +486,6 @@ export function TransactionTable({
             </div>
           </div>
 
-          {/* Category */}
           <div className="flex items-center gap-2 min-w-0">
             {firstTxn.category && (
               <span className="text-xs px-2 py-1 rounded-md bg-[var(--bg-glass)] text-[var(--color-text-secondary)] border border-[var(--color-border-primary)] truncate">
@@ -518,17 +494,14 @@ export function TransactionTable({
             )}
           </div>
 
-          {/* Subcategory (empty for groups) */}
           <div className="flex items-center gap-2 min-w-0" />
 
-          {/* Person (empty for group summary) */}
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-xs text-[var(--color-text-muted)]">
               {groupTransactions.length} transaction{groupTransactions.length > 1 ? 's' : ''}
             </span>
           </div>
 
-          {/* Average amount */}
           <div className={`flex items-center justify-end gap-2`}>
             <span className="text-xs text-[var(--color-text-muted)]">moy.</span>
             <span 
@@ -542,7 +515,6 @@ export function TransactionTable({
           <div className="w-full" />
         </div>
 
-        {/* Expanded transactions */}
         <AnimatePresence>
           {isExpanded && groupTransactions.map(txn => (
             <TransactionRowWithRef key={txn.id} transaction={txn} isGrouped />
@@ -550,23 +522,20 @@ export function TransactionTable({
         </AnimatePresence>
       </div>
     );
-  };
+  });
+
+  RecurringGroupRow.displayName = 'RecurringGroupRow';
 
   return (
     <div className="flex flex-col h-full bg-[var(--color-bg-primary)]">
-
-
-      {/* Table */}
       <div className="flex-1 overflow-auto scrollbar-thin">
         <TableHeader />
         
         <AnimatePresence mode="popLayout">
-          {/* Standalone transactions */}
           {groupedTransactions.standalone.map(txn => (
             <TransactionRowWithRef key={txn.id} transaction={txn} />
           ))}
           
-          {/* Recurring groups */}
           {Object.entries(groupedTransactions.groups).map(([groupId, groupTxns]) => (
             <RecurringGroupRow
               key={groupId}
@@ -585,7 +554,7 @@ export function TransactionTable({
             <p className="text-[var(--color-text-tertiary)] text-sm mt-2">Essayez d&apos;ajuster vos filtres</p>
           </div>
         )}
-      </div>
+      </div> 
     </div>
   );
 }

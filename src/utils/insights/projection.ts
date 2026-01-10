@@ -2,13 +2,13 @@ import { Transaction } from 'src/utils/csv-parser';
 
 // --- TYPES ---
 export interface RecurringPrediction {
-  id: string;
+  id?: string;
   description: string;
   rawDescription: string;
   amount: number;
   type: 'revenue' | 'expense';
   occurrences: number;
-  transactionIds: string[];
+  transactionIds?: string[];
   intervalDays: number;
   lastDate: string;
   nextExpectedDate: string;
@@ -41,6 +41,15 @@ export interface MonthEndProjection {
 interface ProjectionSettings {
   inflationFactor?: number;
   userAge?: number;
+}
+
+
+export interface DailyGoal {
+  current: number;
+  target: number;
+  adjustment: number;
+  message: string;
+  severity: 'safe' | 'warning' | 'danger';
 }
 
 /**
@@ -193,66 +202,85 @@ export function calculateMonthEndProjection(
 
 // Nettoyage des fonctions inutilisées demandées par le compilateur
 export function isSimilarDescription(d1: string, d2: string): boolean {
-  return normalizeDescription(d1).includes(normalizeDescription(d2)) || 
-         normalizeDescription(d2).includes(normalizeDescription(d1));
+  const n1 = normalizeDescription(d1);
+  const n2 = normalizeDescription(d2);
+  
+  // Si l'un contient l'autre, c'est un match (rapide)
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  
+  // Sinon, score de similarité floue (Levenshtein)
+  return calculateStringSimilarity(n1, n2) > 0.85; 
 }
 
-function predictRecurringTransactions(
+/**
+
+ * Détection avancée des récurrences prédites (basé sur weeks over 6 months, proba >=80%)
+/**
+ * Détection avancée des récurrences prédites (basée sur occurrences hebdomadaires sur 6 mois, proba >=80%)
+ */
+function detectRecurringPredictions(
   transactions: Transaction[],
-  type: 'revenue' | 'expense',
-  startDate: Date
+  now: Date,
+  endOfMonth: Date,
+  settings: ProjectionSettings
 ): RecurringPrediction[] {
-  const analysisPeriod = new Date(startDate);
-  analysisPeriod.setMonth(analysisPeriod.getMonth() - 6);
-
-  const history = transactions
-    .filter(txn => {
-      const d = new Date(txn.date);
-      const isType = type === 'revenue' ? txn.amount > 0 : txn.amount < 0;
-      return isType && d >= analysisPeriod && d < startDate;
-    })
-    .map(t => ({ ...t, normDesc: normalizeDescription(t.description) }));
-
-  if (history.length < 2) return [];
-
   const predictions: RecurringPrediction[] = [];
-  const groups = new Map<string, Transaction[]>();
 
-  // Groupement par libellé normalisé (Plus rapide que la boucle imbriquée)
-  history.forEach(txn => {
-    const key = txn.normDesc;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(txn);
-  });
+  const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000); // 6 mois back
+  const recentTxns = transactions.filter(t => new Date(t.date) >= sixMonthsAgo);
 
-  groups.forEach((items, normDesc) => {
-    if (items.length < 2) return;
+  // Group by normalized desc + similar amount
+  const groups = recentTxns.reduce((acc, txn) => {
+    const normDesc = normalizeDescription(txn.description);
+    const key = `${normDesc}_${Math.round(txn.amount / 10) * 10}`; // Group by desc + montant rounded to 10
+    if (!acc.has(key)) acc.set(key, []);
+    acc.get(key)!.push(txn);
+    return acc;
+  }, new Map<string, Transaction[]>());
 
-    items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    const intervals: number[] = [];
-    for (let i = 1; i < items.length; i++) {
-      intervals.push((new Date(items[i].date).getTime() - new Date(items[i-1].date).getTime()) / (86400000));
+  groups.forEach((groupTxns, key) => {
+    if (groupTxns.length < 3) return; // Min occurrences
+
+    // Weekly analysis
+    const weeks = new Set<string>();
+    groupTxns.forEach(t => {
+      const date = new Date(t.date);
+      const weekKey = `${date.getFullYear()}-${Math.floor(date.getDate() / 7)}`;
+      weeks.add(weekKey);
+    });
+
+    const totalPossibleWeeks = 24; // 6 months ~24 weeks
+    const occurrenceRate = (weeks.size / totalPossibleWeeks) * 100;
+
+    if (occurrenceRate < 80) return; // Proba >=80%
+
+    // Calculate avg interval, amount, etc.
+    const sorted = groupTxns.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const intervals = [];
+    for (let i = 1; i < sorted.length; i++) {
+      intervals.push((new Date(sorted[i].date).getTime() - new Date(sorted[i - 1].date).getTime()) / (86400000));
     }
+    const avgInterval = intervals.length > 0 ? intervals.reduce((a, b) => a + b, 0) / intervals.length : 0;
+    const avgAmount = groupTxns.reduce((sum, t) => sum + t.amount, 0) / groupTxns.length;
 
-    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-    const avgAmount = items.reduce((sum, t) => sum + Math.abs(t.amount), 0) / items.length;
-    const lastDate = new Date(items[items.length - 1].date);
-    const nextDate = new Date(lastDate.getTime() + avgInterval * 86400000);
+    const lastDate = new Date(sorted[sorted.length - 1].date);
+    let nextExpected = new Date(lastDate);
+    nextExpected.setDate(nextExpected.getDate() + avgInterval);
 
-    // Ne garder que si c'est vraiment régulier (ex: Mensuel entre 25 et 35 jours)
-    const isRegular = avgInterval > 15 && calculateVariance(intervals) < 10;
-
-    if (isRegular || items.length >= 3) {
+    if (nextExpected > now && nextExpected <= endOfMonth) {
       predictions.push({
-        description: items[items.length - 1].description, // On garde le libellé original le plus récent
+        id: key,
+        description: key.split('_')[0],
+        rawDescription: groupTxns[0].description,
         amount: avgAmount,
-        type,
-        occurrences: items.length,
+        type: avgAmount > 0 ? 'revenue' : 'expense',
+        occurrences: groupTxns.length,
+        transactionIds: groupTxns.map(t => t.id),
         intervalDays: Math.round(avgInterval),
-        lastDate: lastDate.toISOString(),
-        nextExpectedDate: nextDate.toISOString(),
-        confidence: calculateVariance(intervals) < 4 ? 'high' : 'medium'
+        lastDate: sorted[sorted.length - 1].date,
+        nextExpectedDate: nextExpected.toISOString(),
+        confidence: Math.round(occurrenceRate),
+        confidenceLevel: occurrenceRate >= 95 ? 'high' : occurrenceRate >= 85 ? 'medium' : 'low',
       });
     }
   });
@@ -302,7 +330,7 @@ function calculateDailyExpenseTrend(currentMonthTxns: Transaction[], now: Date):
   return totalExpenses / dayOfMonth;
 }
 
-function calculateVariance(values: number[]): number {
+export function calculateVariance(values: number[]): number {
   if (values.length === 0) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
@@ -345,7 +373,7 @@ function determineTrend(
   return 'stable';
 }
 
-function identifyRisks(
+export function identifyRisks(
   projectedBalance: number,
   expectedExpenses: number,
   completedExpenses: number,

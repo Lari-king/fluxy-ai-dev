@@ -303,57 +303,62 @@ const handleRecurringClick = (pred: any) => {
                 <p className="text-sm text-white/40">Aucune transaction ce mois-ci</p>
               </div>
             ) : (
-              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
-                <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
-                  {parsedTransactions
-                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((txn: any, idx: number) => {
-                      const colors = colorMap[txn.parsed.color];
-                      const Icon = txn.parsed.icon;
-                      
-                      return (
-                        <button
-                          key={txn.id}
-                          onClick={() => onFilterByTransaction?.(txn.id)}
-                          className={`group w-full p-3 flex items-center gap-3 hover:bg-cyan-500/10 transition-all ${
-                            idx !== parsedTransactions.length - 1 ? 'border-b border-white/5' : ''
-                          }`}
-                        >
-                          <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
-                            <Icon className={`w-4 h-4 ${colors.text}`} />
-                          </div>
-                          
-                          <div className="flex-1 min-w-0 text-left">
-                            <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
-                              {txn.parsed.merchant}
-                            </p>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
-                                {txn.parsed.category}
-                              </span>
-                              <span className="text-xs text-white/40">
-                                {new Date(txn.date).toLocaleDateString('fr-FR', {
-                                  day: 'numeric',
-                                  month: 'short'
-                                })}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <span 
-                            className="text-sm font-mono font-medium flex-shrink-0"
-                            style={{
-                              color: txn.amount > 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-                            }}
-                          >
-                            {txn.amount > 0 ? '+' : ''}{formatCurrency(txn.amount)}
-                          </span>
-                        </button>
-                      );
-                    })
-                  }
-                </div>
+<div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
+  <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
+    {projection.details.pastTransactions
+      .sort((a: Transaction, b: Transaction) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .map((txn: Transaction, idx: number) => {
+        // Fallbacks sécurisés (pas de .parsed)
+        const merchantName = txn.description || 'Transaction sans nom';
+        const categoryName = txn.category || 'Non classifiée';
+        const isRevenue = txn.amount > 0;
+        const colorKey = isRevenue ? 'green' : 'red';
+        const colors = colorMap[colorKey];
+        const Icon = isRevenue ? TrendingUp : TrendingDown;
+
+        return (
+          <button
+            key={txn.id}
+            onClick={() => onFilterByTransaction?.(txn.id)}
+            className={`group w-full p-3 flex items-center gap-3 hover:bg-cyan-500/10 transition-all ${
+              idx !== projection.details.pastTransactions.length - 1 ? 'border-b border-white/5' : ''
+            }`}
+          >
+            <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
+              <Icon className={`w-4 h-4 ${colors.text}`} />
+            </div>
+            
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
+                {merchantName}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
+                  {categoryName}
+                </span>
+                <span className="text-xs text-white/40">
+                  {new Date(txn.date).toLocaleDateString('fr-FR', {
+                    day: 'numeric',
+                    month: 'short'
+                  })}
+                </span>
               </div>
+            </div>
+            
+            <span 
+              className="text-sm font-mono font-medium flex-shrink-0"
+              style={{
+                color: isRevenue ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+              }}
+            >
+              {isRevenue ? '+' : ''}{formatCurrency(txn.amount)}
+            </span>
+          </button>
+        );
+      })
+    }
+  </div>
+</div>
             )}
           </div>
 
@@ -385,27 +390,55 @@ const handleRecurringClick = (pred: any) => {
 <button
   key={idx}
   onClick={() => {
-    // Normalisation sécurisée
-    const normalizedPred = typeof normalizeDescription === 'function'
-      ? normalizeDescription(pred.description)
-      : pred.description.toUpperCase().replace(/[^A-Z0-9]/g, ' ');
-  
+    console.group(`🔍 [Debug Match] ${pred.description}`);
+    
+    // 1. PRIORITÉ : Utiliser les IDs déjà détectés par le système de récurrence
+    // On vérifie si pred.transactionIds existe (il vient du worker)
+    if (pred.transactionIds && pred.transactionIds.length > 0) {
+      console.log("✅ Utilisation des IDs fournis par le worker :", pred.transactionIds);
+      onFilterByRecurring?.(pred.transactionIds);
+      onClose(); // Optionnel : ferme la modale pour voir le résultat
+      console.groupEnd();
+      return;
+    }
+
+    // 2. FALLBACK : Si le worker n'a pas fourni d'IDs, on fait une recherche manuelle assouplie
+    console.warn("⚠️ Pas d'IDs pré-calculés, tentative de matching manuel...");
+    
     const matchingTxns = transactions.filter(t => {
+      // Description : On utilise le helper de similarité
       const similarDesc = isSimilarDescription(t.description, pred.description);
-      const amountTolerance = Math.abs(Math.abs(t.amount) - Math.abs(pred.amount)) < Math.abs(pred.amount) * 0.1;
+      
+      // Montant : On assouplit la tolérance (20% d'écart autorisé ou 2€ de marge fixe)
+      const diffAmount = Math.abs(Math.abs(t.amount) - Math.abs(pred.amount));
+      const amountTolerance = diffAmount < (Math.abs(pred.amount) * 0.20) || diffAmount < 2;
+      
       return similarDesc && amountTolerance;
     });
-  
-    // Sécurité sur les IDs
+
+    // Extraction et validation des IDs trouvés manuellement
     const validIds = matchingTxns
       .map(t => t.id)
-      .filter(id => typeof id === 'string' && id.length > 8 && /^[a-zA-Z0-9\-_]+$/.test(id));
-  
+      .filter(id => id && (typeof id === 'string' || typeof id === 'number'));
+
     if (validIds.length > 0) {
+      console.log(`✅ Match manuel réussi : ${validIds.length} transactions trouvées.`);
       onFilterByRecurring?.(validIds);
+      onClose();
     } else {
-      console.warn(`[ProjectionModal] Aucune transaction trouvée pour "${pred.description}" – matching trop strict ou données manquantes`);
+      console.error(`❌ Échec total : Aucune transaction ne correspond à "${pred.description}"`);
+      // Ici on peut filtrer uniquement par description en dernier recours
+      const descOnlyMatches = transactions
+        .filter(t => isSimilarDescription(t.description, pred.description))
+        .map(t => t.id);
+      
+      if (descOnlyMatches.length > 0) {
+        console.log("ℹ️ Tentative de secours : Match par description uniquement.");
+        onFilterByRecurring?.(descOnlyMatches);
+        onClose();
+      }
     }
+    console.groupEnd();
   }}
   className={`group w-full p-3 flex items-center gap-3 hover:bg-purple-500/10 transition-all ${
     idx !== parsedRecurrences.length - 1 ? 'border-b border-white/5' : ''

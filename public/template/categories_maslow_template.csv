@@ -1,0 +1,201 @@
+categorie,sous_categorie
+ABRI & ÉNERGIE,Loyer
+ABRI & ÉNERGIE,Crédit Immobilier
+ABRI & ÉNERGIE,Électricité
+ABRI & ÉNERGIE,Gaz
+ABRI & ÉNERGIE,Eau
+ABRI & ÉNERGIE,Charges Copropriété
+ABRI & ÉNERGIE,Taxe Foncière
+ABRI & ÉNERGIE,Assurance Habitation
+ABRI & ÉNERGIE,Fioul/Bois
+ABRI & ÉNERGIE,Réparations Urgentes
+NUTRITION VITALE,Supermarché
+NUTRITION VITALE,Marché Frais
+NUTRITION VITALE,Boucherie
+NUTRITION VITALE,Boulangerie
+NUTRITION VITALE,Épicerie de quartier
+NUTRITION VITALE,Hygiène maison
+NUTRITION VITALE,Soins corps
+NUTRITION VITALE,Boissons non-alcoolisées
+NUTRITION VITALE,Conserves/Stock
+NUTRITION VITALE,Aliments Animaux
+SANTÉ & INTÉGRITÉ,Mutuelle
+SANTÉ & INTÉGRITÉ,Pharmacie
+SANTÉ & INTÉGRITÉ,Médecin Généraliste
+SANTÉ & INTÉGRITÉ,Dentiste
+SANTÉ & INTÉGRITÉ,Optique
+SANTÉ & INTÉGRITÉ,Analyses Labo
+SANTÉ & INTÉGRITÉ,Spécialistes
+SANTÉ & INTÉGRITÉ,Urgences
+SANTÉ & INTÉGRITÉ,Kiné/Ostéo
+SANTÉ & INTÉGRITÉ,Matériel Médical
+MOBILITÉ TRAVAIL,Carburant Travail
+MOBILITÉ TRAVAIL,Abonnement Transport
+MOBILITÉ TRAVAIL,Péages Pro
+MOBILITÉ TRAVAIL,Parking Bureau
+MOBILITÉ TRAVAIL,Entretien Véhicule
+MOBILITÉ TRAVAIL,Assurance Auto
+MOBILITÉ TRAVAIL,Réparation Vélo
+MOBILITÉ TRAVAIL,Trottinette/VTC
+MOBILITÉ TRAVAIL,Frais de déplacement
+MOBILITÉ TRAVAIL,Contrôle technique
+PRÉVOYANCE & RISQUES,Fonds d'urgence
+PRÉVOYANCE & RISQUES,Assurance Vie (Prévoyance)
+PRÉVOYANCE & RISQUES,Frais Bancaires
+PRÉVOYANCE & RISQUES,Juridique/Avocat
+PRÉVOYANCE & RISQUES,Cotisations Syndicales
+PRÉVOYANCE & RISQUES,Alarmes/Télésurveillance
+PRÉVOYANCE & RISQUES,Coffre-fort
+PRÉVOYANCE & RISQUES,Provisions Impôts
+PRÉVOYANCE & RISQUES,Assurance décès
+PRÉVOYANCE & RISQUES,Perte Autonomie
+CONNECTIVITÉ FONCTIONNELLE,Forfait Mobile
+CONNECTIVITÉ FONCTIONNELLE,Internet/Fibre
+CONNECTIVITÉ FONCTIONNELLE,Services Cloud (Stockage)
+CONNECTIVITÉ FONCTIONNELLE,Antivirus/VPN
+CONNECTIVITÉ FONCTIONNELLE,Maintenance Informatique
+CONNECTIVITÉ FONCTIONNELLE,Domotique
+CONNECTIVITÉ FONCTIONNELLE,Logiciels Pro
+CONNECTIVITÉ FONCTIONNELLE,Courrier/Poste
+CONNECTIVITÉ FONCTIONNELLE,Télépéage
+CONNECTIVITÉ FONCTIONNELLE,Licences logicielles
+ÉQUIPEMENT DOMESTIQUE,Petit électroménager
+ÉQUIPEMENT DOMESTIQUE,Gros électroménager
+ÉQUIPEMENT DOMESTIQUE,Mobilier de base
+ÉQUIPEMENT DOMESTIQUE,Literie
+ÉQUIPEMENT DOMESTIQUE,Vaisselle
+ÉQUIPEMENT DOMESTIQUE,Décoration
+ÉQUIPEMENT DOMESTIQUE,Linge de maison
+ÉQUIPEMENT DOMESTIQUE,Jardinage
+ÉQUIPEMENT DOMESTIQUE,Outillage
+ÉQUIPEMENT DOMESTIQUE,Sécurité incendie
+RÉSEAU SOCIAL & AMITIÉS,Restaurants entre amis
+RÉSEAU SOCIAL & AMITIÉS,Bars/Sorties
+RÉSEAU SOCIAL & AMITIÉS,Cadeaux Anniversaires
+RÉSEAU SOCIAL & AMITIÉS,Invitations Maison
+RÉSEAU SOCIAL & AMITIÉS,Activités Groupe
+RÉSEAU SOCIAL & AMITIÉS,Cafés
+RÉSEAU SOCIAL & AMITIÉS,Festivals
+RÉSEAU SOCIAL & AMITIÉS,Location vacances groupe
+RÉSEAU SOCIAL & AMITIÉS,Cotisation asso
+RÉSEAU SOCIAL & AMITIÉS,Voyages partagés
+CERCLE FAMILIAL,Scolarité
+CERCLE FAMILIAL,Activités Enfants
+CERCLE FAMILIAL,Garde/Nounou
+CERCLE FAMILIAL,Argent de poche
+CERCLE FAMILIAL,Aide aux parents
+CERCLE FAMILIAL,Jouets
+CERCLE FAMILIAL,Événements familiaux
+CERCLE FAMILIAL,Mariages/Baptêmes
+CERCLE FAMILIAL,Vacances famille
+CERCLE FAMILIAL,Pensions
+CULTURE & MÉDIAS,Streaming Vidéo
+CULTURE & MÉDIAS,Streaming Musique
+CULTURE & MÉDIAS,Cinéma
+CULTURE & MÉDIAS,Théâtre
+CULTURE & MÉDIAS,Musées
+CULTURE & MÉDIAS,Livres/Kindle
+CULTURE & MÉDIAS,Presse/Magazines
+CULTURE & MÉDIAS,Gaming/Jeux-vidéo
+CULTURE & MÉDIAS,Concerts
+CULTURE & MÉDIAS,Expositions
+SPORT & COLLECTIF,Club de sport
+SPORT & COLLECTIF,Licence fédérale
+SPORT & COLLECTIF,Équipement sport
+SPORT & COLLECTIF,Compétitions
+SPORT & COLLECTIF,Coach groupe
+SPORT & COLLECTIF,Location terrains
+SPORT & COLLECTIF,Tenues sportives
+SPORT & COLLECTIF,Nutrition sportive
+SPORT & COLLECTIF,Événements sportifs
+SPORT & COLLECTIF,Stage de sport
+APPARENCE & ESTIME,Prêt-à-porter
+APPARENCE & ESTIME,Chaussures
+APPARENCE & ESTIME,Coiffeur
+APPARENCE & ESTIME,Institut de beauté
+APPARENCE & ESTIME,Parfumerie
+APPARENCE & ESTIME,Bijouterie/Montres
+APPARENCE & ESTIME,Accessoires mode
+APPARENCE & ESTIME,Pressing
+APPARENCE & ESTIME,Optique solaire
+APPARENCE & ESTIME,Cosmétiques luxe
+CONFORT & TEMPS,Livraison Repas (Uber)
+CONFORT & TEMPS,Aide ménagère
+CONFORT & TEMPS,Conciergerie
+CONFORT & TEMPS,VTC Plaisir
+CONFORT & TEMPS,Blanchisserie
+CONFORT & TEMPS,Abonnement Premium
+CONFORT & TEMPS,Home Staging
+CONFORT & TEMPS,Épicerie Fine
+CONFORT & TEMPS,Vin/Cave
+CONFORT & TEMPS,Shopping Tech Plaisir
+HOBBIES & PASSIONS,Photographie
+HOBBIES & PASSIONS,Musique (Instrument)
+HOBBIES & PASSIONS,Art/Peinture
+HOBBIES & PASSIONS,Collection/Antiquités
+HOBBIES & PASSIONS,High-Tech
+HOBBIES & PASSIONS,Cuisine/Cours
+HOBBIES & PASSIONS,Jardinage plaisir
+HOBBIES & PASSIONS,Bricolage expert
+HOBBIES & PASSIONS,Animaux de compagnie
+HOBBIES & PASSIONS,Modélisme
+VOYAGES EXCEPTIONNELS,Billets d'avion
+VOYAGES EXCEPTIONNELS,Hôtels
+VOYAGES EXCEPTIONNELS,AirBnb
+VOYAGES EXCEPTIONNELS,Location voiture
+VOYAGES EXCEPTIONNELS,Restos vacances
+VOYAGES EXCEPTIONNELS,Activités touristiques
+VOYAGES EXCEPTIONNELS,Souvenirs
+VOYAGES EXCEPTIONNELS,Visas/Passeports
+VOYAGES EXCEPTIONNELS,Assurances voyage
+VOYAGES EXCEPTIONNELS,Valises/Équipement
+FORMATION & SAVOIR,Formations en ligne
+FORMATION & SAVOIR,Coaching Individuel
+FORMATION & SAVOIR,Conférences
+FORMATION & SAVOIR,Certifications
+FORMATION & SAVOIR,Livres de spécialité
+FORMATION & SAVOIR,Apprentissage Langues
+FORMATION & SAVOIR,Masterclasses
+FORMATION & SAVOIR,Mentorat
+FORMATION & SAVOIR,Séminaires
+FORMATION & SAVOIR,Outils de productivité
+INVESTISSEMENT ACTIF,PEA
+INVESTISSEMENT ACTIF,Compte Titres
+INVESTISSEMENT ACTIF,Crypto-monnaies
+INVESTISSEMENT ACTIF,Immobilier locatif
+INVESTISSEMENT ACTIF,Crowdfunding
+INVESTISSEMENT ACTIF,Assurance-vie (Invest)
+INVESTISSEMENT ACTIF,Métaux précieux
+INVESTISSEMENT ACTIF,Startups/Angels
+INVESTISSEMENT ACTIF,SCPI
+INVESTISSEMENT ACTIF,Plan Retraite (PER)
+PROJETS PERSONNELS,Side-business
+PROJETS PERSONNELS,Création Entreprise
+PROJETS PERSONNELS,Site web perso
+PROJETS PERSONNELS,Matériel création
+PROJETS PERSONNELS,Marketing/Pub
+PROJETS PERSONNELS,Freelancing (frais)
+PROJETS PERSONNELS,Prototype
+PROJETS PERSONNELS,Brevets/IP
+PROJETS PERSONNELS,Coworking
+PROJETS PERSONNELS,Équipement bureau
+PHILANTHROPIE,Dons associations
+PHILANTHROPIE,Mécénat
+PHILANTHROPIE,Aide humanitaire
+PHILANTHROPIE,Cadeaux solidaires
+PHILANTHROPIE,Micro-crédit
+PHILANTHROPIE,Soutien créateurs (Patreon)
+PHILANTHROPIE,Bénévolat (frais)
+PHILANTHROPIE,Église/Culte
+PHILANTHROPIE,Protection environnement
+PHILANTHROPIE,Parrainage
+TRANSMISSION & HÉRITAGE,Notaire (succession)
+TRANSMISSION & HÉRITAGE,Assurance Obsèques
+TRANSMISSION & HÉRITAGE,Épargne Enfants
+TRANSMISSION & HÉRITAGE,Donation
+TRANSMISSION & HÉRITAGE,Conseil Patrimonial
+TRANSMISSION & HÉRITAGE,Archives familiales
+TRANSMISSION & HÉRITAGE,Propriété familiale
+TRANSMISSION & HÉRITAGE,Trusts
+TRANSMISSION & HÉRITAGE,Fiscalité transmission
+TRANSMISSION & HÉRITAGE,Capital long terme
