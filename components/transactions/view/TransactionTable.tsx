@@ -4,6 +4,7 @@
  * ✅ Toutes vos fonctionnalités conservées
  * ✅ Checkbox corrigée avec stopPropagation
  * ✅ Performance optimisée (useMemo/useCallback)
+ * ✅ Support division de transactions avec affichage visuel
  */
 
 import React, { useState, forwardRef, useMemo, useCallback } from 'react';
@@ -11,7 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction } from '../../../contexts/DataContext';
 import { 
   ArrowUpDown, MoreVertical, Edit, Trash2, Copy, Tag, 
-  ChevronDown, ChevronRight, Calendar, Repeat
+  ChevronDown, ChevronRight, Calendar, Repeat, Split, CornerDownRight
 } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Checkbox } from '../../ui/checkbox';
@@ -32,6 +33,7 @@ interface TransactionTableProps {
   onTransactionClick: (transaction: Transaction) => void;
   onUpdate: (id: string, updates: Partial<Transaction>) => void;
   onDelete: (id: string) => void;
+  onSplit?: (transaction: Transaction) => void; // 🆕 Handler pour diviser
   onCreateRecurringGroup?: (transactionIds: string[], sharedData: Partial<Transaction>) => void;
   onBulkDelete?: (ids: string[]) => void;
   onBulkCategorize?: (ids: string[], category: string) => void;
@@ -58,6 +60,9 @@ type SortDirection = 'asc' | 'desc';
 interface TransactionRowProps {
   transaction: Transaction;
   isGrouped?: boolean;
+  isChildTransaction: boolean; // 🆕 Optimisé
+  isSplitParent: boolean; // 🆕 Optimisé
+  childCount: number; // 🆕 Optimisé
 }
 
 export function TransactionTable({
@@ -65,6 +70,7 @@ export function TransactionTable({
   onTransactionClick,
   onUpdate,
   onDelete,
+  onSplit, // 🆕
   onCreateRecurringGroup,
   onBulkDelete,
   onBulkCategorize,
@@ -81,6 +87,68 @@ export function TransactionTable({
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // 🆕 OPTIMISATION : Pré-calcul unique des métadonnées de transactions divisées
+  const transactionsMetadata = useMemo(() => {
+    const metadata = new Map<string, {
+      isChildTransaction: boolean;
+      isSplitParent: boolean;
+      childCount: number;
+    }>();
+
+    transactions.forEach(txn => {
+      const isChild = !!(txn as any).parentTransactionId;
+      const childIds = (txn as any).childTransactionIds || [];
+      const isSplit = childIds.length > 0;
+
+      metadata.set(txn.id, {
+        isChildTransaction: isChild,
+        isSplitParent: isSplit,
+        childCount: childIds.length
+      });
+    });
+
+    return metadata;
+  }, [transactions]);
+
+  // 🆕 OPTIMISATION : Map des personnes pour accès O(1)
+  const peopleMap = useMemo(() => {
+    return new Map(people.map(p => [p.id, p]));
+  }, [people]);
+
+  // 🆕 OPTIMISATION : Map des catégories pour lookup ID→Nom
+  const categoryLookup = useMemo(() => {
+    const idToName = new Map<string, string>();
+    const nameExists = new Set<string>();
+    
+    categories.forEach(cat => {
+      idToName.set(cat.id, cat.name);
+      nameExists.add(cat.name.toLowerCase());
+    });
+    
+    return { idToName, nameExists };
+  }, [categories]);
+
+  // 🆕 HELPER : Résoudre le nom d'une catégorie (ID ou Nom → Nom affiché)
+  const getCategoryName = useCallback((categoryValue: string): string => {
+    if (!categoryValue) return 'Non catégorisé';
+    
+    // 1. Si c'est un ID technique, chercher le nom
+    if (categoryValue.startsWith('cat_')) {
+      const name = categoryLookup.idToName.get(categoryValue);
+      if (name) return name;
+      // ID inconnu → fallback
+      return 'Non catégorisé';
+    }
+    
+    // 2. Si c'est un nom valide (existe dans la liste), le retourner tel quel
+    if (categoryLookup.nameExists.has(categoryValue.toLowerCase())) {
+      return categoryValue;
+    }
+    
+    // 3. Sinon, c'est peut-être un ancien nom ou une erreur → fallback
+    return categoryValue || 'Non catégorisé';
+  }, [categoryLookup]);
 
   // 🆕 OPTIMISATION : useCallback pour éviter re-création
   const toggleSelection = useCallback((id: string) => {
@@ -142,8 +210,8 @@ export function TransactionTable({
           bValue = b.category || '';
           break;
         case 'person':
-          const personA = people.find(p => p.id === a.personId);
-          const personB = people.find(p => p.id === b.personId);
+          const personA = peopleMap.get(a.personId || '');
+          const personB = peopleMap.get(b.personId || '');
           aValue = personA?.name || '';
           bValue = personB?.name || '';
           break;
@@ -157,7 +225,7 @@ export function TransactionTable({
         return aValue < bValue ? 1 : -1;
       }
     });
-  }, [transactions, sortField, sortDirection, people]);
+  }, [transactions, sortField, sortDirection, peopleMap]);
 
   // 🆕 OPTIMISATION : useMemo pour groupes
   const groupedTransactions = useMemo(() => {
@@ -178,10 +246,10 @@ export function TransactionTable({
     return { groups, standalone };
   }, [sortedTransactions]);
 
-  // 🆕 OPTIMISATION : useCallback pour getPerson
+  // 🆕 OPTIMISATION : useCallback pour getPerson avec Map
   const getPerson = useCallback((transaction: Transaction) => {
-    return people.find(p => p.id === transaction.personId);
-  }, [people]);
+    return peopleMap.get(transaction.personId || '');
+  }, [peopleMap]);
 
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) {
@@ -255,8 +323,14 @@ export function TransactionTable({
     </div>
   );
 
-  // 🆕 TransactionRow avec React.memo pour performance
-  const TransactionRowWithRef = React.memo(forwardRef<HTMLDivElement, TransactionRowProps>(({ transaction, isGrouped = false }, ref) => {
+  // 🆕 TransactionRow avec React.memo pour performance + métadonnées pré-calculées
+  const TransactionRowWithRef = React.memo(forwardRef<HTMLDivElement, TransactionRowProps>(({ 
+    transaction, 
+    isGrouped = false,
+    isChildTransaction, // 🆕 Reçu en prop (pré-calculé)
+    isSplitParent, // 🆕 Reçu en prop (pré-calculé)
+    childCount // 🆕 Reçu en prop (pré-calculé)
+  }, ref) => {
     const isSelected = selectedIds.includes(transaction.id);
     const person = getPerson(transaction);
     const isIncome = transaction.amount > 0;
@@ -279,6 +353,7 @@ export function TransactionTable({
     return (
       <motion.div
         ref={ref} 
+        id={`txn-${transaction.id}`} // 🆕 ID unique pour l'auto-scroll
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}
@@ -290,6 +365,7 @@ export function TransactionTable({
           ${isSelected ? 'bg-[var(--color-primary)]/10 border-l-2 border-l-[var(--color-primary)]' : ''}
           ${isActiveRow ? 'bg-[var(--color-primary)]/20 border-l-4 border-l-[var(--color-primary)] shadow-lg' : ''}
           ${isGrouped ? 'bg-[var(--bg-glass)]/30' : ''}
+          ${isChildTransaction ? 'bg-purple-500/5' : ''}
         `}
         onClick={handleRowClick}
       >
@@ -325,8 +401,18 @@ export function TransactionTable({
           </span>
         </div>
 
-        {/* Description */}
+        {/* Description avec indicateurs de division */}
         <div className="flex items-center gap-3 min-w-0">
+          {/* 🆕 Indicateur sous-transaction */}
+          {isChildTransaction && (
+            <CornerDownRight className="size-3 text-purple-400/60 flex-shrink-0" />
+          )}
+          
+          {/* 🆕 Indicateur transaction divisée */}
+          {isSplitParent && (
+            <Split className="size-3 text-orange-400 flex-shrink-0" />
+          )}
+          
           {transaction.brandLogo && (
             <img 
               src={transaction.brandLogo} 
@@ -335,23 +421,48 @@ export function TransactionTable({
             />
           )}
           <div className="flex flex-col gap-1 min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span 
                 className="truncate text-sm text-[var(--color-text-primary)] font-medium"
                 title={transaction.description}
               >
                 {transaction.description}
               </span>
+              
+              {/* Badges */}
               {isRecurring && (
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-white/10 bg-white/5 text-white/60 flex-shrink-0">
                   <Repeat className="size-2.5 mr-1" />
                   Récurrent
                 </Badge>
               )}
+              
+              {/* 🆕 Badge sous-opération */}
+              {isChildTransaction && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-purple-500/30 bg-purple-500/10 text-purple-300 flex-shrink-0">
+                  Sous-opération
+                </Badge>
+              )}
+              
+              {/* 🆕 Badge divisée */}
+              {isSplitParent && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-orange-500/30 bg-orange-500/10 text-orange-300 flex-shrink-0">
+                  <Split className="size-2.5 mr-1" />
+                  Divisée en {childCount}
+                </Badge>
+              )}
             </div>
+            
             {transaction.brand && (
               <span className="text-xs text-[var(--color-text-muted)] truncate">
                 {transaction.brand}
+              </span>
+            )}
+            
+            {/* 🆕 Note de division */}
+            {(transaction as any).splitNote && (
+              <span className="text-xs text-white/30 italic truncate" title={(transaction as any).splitNote}>
+                {(transaction as any).splitNote}
               </span>
             )}
           </div>
@@ -361,7 +472,7 @@ export function TransactionTable({
         <div className="flex items-center gap-2 min-w-0">
           {transaction.category && (
             <span className="text-xs px-2 py-1 rounded-md bg-white/5 text-[var(--color-text-secondary)] border border-white/10 truncate">
-              {transaction.category}
+              {getCategoryName(transaction.category)}
             </span>
           )}
         </div>
@@ -411,6 +522,14 @@ export function TransactionTable({
               <DropdownMenuItem onClick={() => onTransactionClick(transaction)} className="cursor-pointer">
                 <Edit className="size-4 mr-2" /> Modifier
               </DropdownMenuItem>
+              
+              {/* 🆕 Bouton Diviser */}
+              {onSplit && !isChildTransaction && (
+                <DropdownMenuItem onClick={() => onSplit(transaction)} className="cursor-pointer">
+                  <Split className="size-4 mr-2" /> Diviser
+                </DropdownMenuItem>
+              )}
+              
               <DropdownMenuItem onClick={() => navigator.clipboard.writeText(transaction.description)} className="cursor-pointer">
                 <Copy className="size-4 mr-2" /> Copier description
               </DropdownMenuItem>
@@ -489,7 +608,7 @@ export function TransactionTable({
           <div className="flex items-center gap-2 min-w-0">
             {firstTxn.category && (
               <span className="text-xs px-2 py-1 rounded-md bg-[var(--bg-glass)] text-[var(--color-text-secondary)] border border-[var(--color-border-primary)] truncate">
-                {firstTxn.category}
+                {getCategoryName(firstTxn.category)}
               </span>
             )}
           </div>
@@ -516,9 +635,25 @@ export function TransactionTable({
         </div>
 
         <AnimatePresence>
-          {isExpanded && groupTransactions.map(txn => (
-            <TransactionRowWithRef key={txn.id} transaction={txn} isGrouped />
-          ))}
+          {isExpanded && groupTransactions.map(txn => {
+            // 🆕 Récupération des métadonnées pré-calculées
+            const metadata = transactionsMetadata.get(txn.id) || {
+              isChildTransaction: false,
+              isSplitParent: false,
+              childCount: 0
+            };
+            
+            return (
+              <TransactionRowWithRef 
+                key={txn.id} 
+                transaction={txn} 
+                isGrouped 
+                isChildTransaction={metadata.isChildTransaction}
+                isSplitParent={metadata.isSplitParent}
+                childCount={metadata.childCount}
+              />
+            );
+          })}
         </AnimatePresence>
       </div>
     );
@@ -532,9 +667,24 @@ export function TransactionTable({
         <TableHeader />
         
         <AnimatePresence mode="popLayout">
-          {groupedTransactions.standalone.map(txn => (
-            <TransactionRowWithRef key={txn.id} transaction={txn} />
-          ))}
+          {groupedTransactions.standalone.map(txn => {
+            // 🆕 Récupération des métadonnées pré-calculées pour optimisation
+            const metadata = transactionsMetadata.get(txn.id) || {
+              isChildTransaction: false,
+              isSplitParent: false,
+              childCount: 0
+            };
+            
+            return (
+              <TransactionRowWithRef 
+                key={txn.id} 
+                transaction={txn}
+                isChildTransaction={metadata.isChildTransaction}
+                isSplitParent={metadata.isSplitParent}
+                childCount={metadata.childCount}
+              />
+            );
+          })}
           
           {Object.entries(groupedTransactions.groups).map(([groupId, groupTxns]) => (
             <RecurringGroupRow

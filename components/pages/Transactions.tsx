@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { 
   Upload, Plus, Repeat, X, Sparkles, CheckCircle, 
-  Trash2, Tag, User, Globe, CreditCard, AlertTriangle, TrendingUp
+  Trash2, Tag, User, Globe, CreditCard, AlertTriangle, TrendingUp, Split
 } from 'lucide-react';
 
 // Contextes & Utils
@@ -41,6 +41,7 @@ import { RightPanelDetails } from '../transactions/RightPanelDetails';
 import { CommandBarNew } from '../transactions/CommandBar';
 import { TransactionImport } from '../transactions/modals/ImportModal';
 import { TransactionFormDialog } from '../transactions/modals/TransactionFormDialog';
+import { SplitTransactionDialog } from '../transactions/modals/SplitTransactionDialog';
 import { TransactionTable } from '../transactions/view/TransactionTable';
 import { PaginationControls } from '../transactions/components/PaginationControls';
 
@@ -60,6 +61,7 @@ interface FilterState {
   dateTo: string;
   recurring: string;
   completion?: 'all' | 'full' | 'partial' | 'none';
+  splitStatus?: 'all' | 'split' | 'not_split'; // 🆕 Filtre opérations divisées
 }
 
 export function Transactions() {
@@ -88,11 +90,16 @@ export function Transactions() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
+  // 🆕 État pour la division de transaction
+  const [splittingTransaction, setSplittingTransaction] = useState<Transaction | null>(null);
 
   // Filtres contextuels (Insights)
   const [selectedRecurringIds, setSelectedRecurringIds] = useState<string[] | null>(null);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [anomalyFilter, setAnomalyFilter] = useState<string | null>(null);
+  // 🆕 Filtre pour afficher une famille complète (mère + enfants + petits-enfants)
+  const [splitFamilyFilter, setSplitFamilyFilter] = useState<string | null>(null);
 
   // Filtres standards
   const [filters, setFilters] = useState<FilterState>({
@@ -116,8 +123,11 @@ export function Transactions() {
   // 2. LOGIQUE MÉMOISÉE
   // ========================================
 
+  // 🔧 FIX : Balance calculée SANS les transactions masquées (isHidden)
   const currentDatabaseBalance = useMemo(() => {
-    return transactions.reduce((sum, t) => sum + t.amount, 0);
+    return transactions
+      .filter(t => !t.isHidden) // ✅ Exclure les transactions masquées
+      .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
   const activeFilterType = useMemo(() => {
@@ -135,96 +145,221 @@ export function Transactions() {
   }, []);
 
   /**
-   * ⚡ FILTRAGE ULTRA-OPTIMISÉ
+   * ⚡ CARTE D'IDENTITÉ DES CATÉGORIES (COMPATIBILITÉ ID / NOM)
    */
+  const categoryLookup = useMemo(() => {
+    const idToName = new Map<string, string>();
+    const nameToId = new Map<string, string>();
+    const parentToChildren = new Map<string, Set<string>>(); 
+    
+    categories.forEach(cat => {
+      idToName.set(cat.id, cat.name);
+      nameToId.set(cat.name.toLowerCase(), cat.id);
+      
+      if (cat.parentId) {
+        if (!parentToChildren.has(cat.parentId)) {
+          parentToChildren.set(cat.parentId, new Set());
+        }
+        parentToChildren.get(cat.parentId)?.add(cat.id);
+      }
+    });
+    
+    return { idToName, nameToId, parentToChildren };
+  }, [categories]);
+
+  // 🆕 HELPER : Normaliser une valeur de catégorie (ID ou Nom → ID)
+  const normalizeCategoryValue = useCallback((value: string | null): string | null => {
+    if (!value || value === 'all' || value === 'Toutes les catégories') return null;
+    
+    // Si c'est déjà un ID (commence par 'cat_'), le retourner tel quel
+    if (value.startsWith('cat_')) return value;
+    
+    // Sinon, c'est probablement un nom → le convertir en ID
+    return categoryLookup.nameToId.get(value.toLowerCase()) || value;
+  }, [categoryLookup]);
+
+  // 🆕 HELPER : Vérifier si une transaction matche une catégorie (hybride ID/Nom)
+  const transactionMatchesCategory = useCallback((
+    txnCategory: string,
+    filterValue: string,
+    includeChildren: boolean = false
+  ): boolean => {
+    if (!txnCategory || !filterValue) return false;
+    
+    // Normaliser les deux valeurs en IDs
+    const txnId = normalizeCategoryValue(txnCategory);
+    const filterId = normalizeCategoryValue(filterValue);
+    
+    if (!txnId || !filterId) return false;
+    
+    // Match direct
+    if (txnId === filterId) return true;
+    
+    // Si on doit inclure les enfants, vérifier si txnId est un enfant de filterId
+    if (includeChildren) {
+      const childrenIds = categoryLookup.parentToChildren.get(filterId);
+      if (childrenIds && childrenIds.has(txnId)) return true;
+    }
+    
+    return false;
+  }, [categoryLookup, normalizeCategoryValue]);
+
+  // 🆕 HELPER : Vérifier si une sous-catégorie matche (gère ID et Nom)
+  const transactionMatchesSubCategory = useCallback((
+    txnSubCategory: string | undefined,
+    filterValue: string
+  ): boolean => {
+    if (!txnSubCategory || !filterValue) return false;
+    
+    // 1. Comparaison directe (si les deux sont des noms)
+    if (txnSubCategory.toLowerCase() === filterValue.toLowerCase()) return true;
+    
+    // 2. Si filterValue est un ID, convertir en nom et comparer
+    if (filterValue.startsWith('cat_')) {
+      const filterName = categoryLookup.idToName.get(filterValue);
+      if (filterName && txnSubCategory.toLowerCase() === filterName.toLowerCase()) return true;
+    }
+    
+    // 3. Si txnSubCategory pourrait être un ID (rare), convertir
+    if (txnSubCategory.startsWith('cat_')) {
+      const txnName = categoryLookup.idToName.get(txnSubCategory);
+      if (txnName && txnName.toLowerCase() === filterValue.toLowerCase()) return true;
+    }
+    
+    return false;
+  }, [categoryLookup]);
+
+  // ==================================================================================
+  // 3. 🔍 MOTEUR DE FILTRAGE HYBRIDE ET OPTIMISÉ
+  // ==================================================================================
   const filteredTransactions = useMemo(() => {
     if (!transactions.length) return [];
 
     let result = transactions;
 
-    // 1. Filtres contextuels prioritaires (avec Set pour performance)
+    // --- A. FILTRES CONTEXTUELS PRIORITAIRES ---
+    
+    // 🆕 FILTRE FAMILLE DIVISÉE (priorité absolue)
+    if (splitFamilyFilter) {
+      const familySet = new Set<string>();
+      
+      // Ajouter le parent
+      familySet.add(splitFamilyFilter);
+      
+      // Trouver tous les enfants directs
+      const parent = transactions.find(t => t.id === splitFamilyFilter);
+      if (parent && parent.childTransactionIds) {
+        parent.childTransactionIds.forEach(childId => familySet.add(childId));
+        
+        // Trouver récursivement les petits-enfants
+        parent.childTransactionIds.forEach(childId => {
+          const child = transactions.find(t => t.id === childId);
+          if (child && child.childTransactionIds) {
+            child.childTransactionIds.forEach(grandchildId => familySet.add(grandchildId));
+          }
+        });
+      }
+      
+      return transactions
+        .filter(t => familySet.has(t.id))
+        .sort((a, b) => {
+          // Tri hiérarchique : parent d'abord, puis enfants, puis petits-enfants
+          if (a.id === splitFamilyFilter) return -1;
+          if (b.id === splitFamilyFilter) return 1;
+          if (a.parentTransactionId === splitFamilyFilter && b.parentTransactionId !== splitFamilyFilter) return -1;
+          if (b.parentTransactionId === splitFamilyFilter && a.parentTransactionId !== splitFamilyFilter) return 1;
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+    }
+    
     if (selectedRecurringIds && selectedRecurringIds.length > 0) {
       const recurringSet = new Set(selectedRecurringIds);
-      return result
-        .filter(t => recurringSet.has(t.id))
-        .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
+      return result.filter(t => recurringSet.has(t.id))
+                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
-
     if (selectedTransactionId) {
       return result.filter(t => t.id === selectedTransactionId);
     }
-
     if (anomalyFilter) {
       const lowerAnomaly = anomalyFilter.toLowerCase();
       result = result.filter(t => t.description.toLowerCase().includes(lowerAnomaly));
     }
 
-    // 2. Pré-calculs pour éviter répétitions dans la boucle
+    // --- B. PRÉ-CALCULS DES FILTRES ---
     const term = deferredSearchTerm.toLowerCase().trim();
     const hasSearch = term.length > 0;
     
-    const filterCat = filters.category !== 'all' && filters.category !== 'Toutes les catégories' ? filters.category : null;
-    const filterSubCat = (filters.subCategory && filters.subCategory !== 'all' && filters.subCategory !== '' && filters.subCategory !== 'Toutes les sous-cat.') ? filters.subCategory : null;
-    const filterType = filters.type !== 'all' ? filters.type : null;
-    const filterCountry = filters.country !== 'all' ? filters.country.toLowerCase() : null;
-    const filterPerson = filters.person !== 'all' && filters.person !== 'Toutes les personnes' ? filters.person : null;
-    const minAmt = filters.amountMin ? parseFloat(filters.amountMin) : null;
-    const maxAmt = filters.amountMax ? parseFloat(filters.amountMax) : null;
-    const dFrom = filters.dateFrom || null;
-    const dTo = filters.dateTo || null;
-
-    // 3. Filtrage principal
+    // 🆕 Normalisation des filtres de catégories
+    const filterCatValue = filters.category !== 'all' && filters.category !== '' ? filters.category : null;
+    const filterSubCatValue = filters.subCategory !== 'all' && filters.subCategory !== '' ? filters.subCategory : null;
+    
+    // --- C. BOUCLE DE FILTRAGE PRINCIPALE ---
     result = result.filter(txn => {
-      // Recherche textuelle (Deferred)
+      // 1. Gestion du masquage (SAUF pour les opérations parentes divisées)
+      const hasChildren = txn.childTransactionIds && Array.isArray(txn.childTransactionIds) && txn.childTransactionIds.length > 0;
+      if (txn.isHidden && !hasChildren) return false; // 🔧 FIX : Toujours afficher les opérations parentes divisées même si masquées
+
+      // 2. Recherche textuelle
       if (hasSearch) {
-        const matchDesc = txn.description.toLowerCase().includes(term);
-        const matchCat = txn.category?.toLowerCase().includes(term);
-        const matchAmount = txn.amount.toString().includes(term);
-        if (!matchDesc && !matchCat && !matchAmount) return false;
+        const catName = categoryLookup.idToName.get(txn.category) || txn.category;
+        const matchesSearch = 
+          stringIncludes(txn.description, term) ||
+          stringIncludes((txn as any).merchant, term) ||
+          stringIncludes(catName, term) ||
+          txn.amount.toString().includes(term);
+        if (!matchesSearch) return false;
       }
 
-      // Filtre Complétion
-      if (filters.completion && filters.completion !== 'all') {
-        const hasCategory = txn.category && txn.category !== 'Non classifié';
-        const hasSubCategory = (txn as any).subCategory && (txn as any).subCategory !== '';
-
-        if (filters.completion === 'full' && (!hasCategory || !hasSubCategory)) return false;
-        if (filters.completion === 'partial' && (!hasCategory || hasSubCategory)) return false;
-        if (filters.completion === 'none' && hasCategory) return false;
+      // 3. 🆕 FILTRE CATÉGORIE HIÉRARCHIQUE (HYBRIDE ID/NOM)
+      if (filterCatValue) {
+        const matches = transactionMatchesCategory(txn.category, filterCatValue, true);
+        if (!matches) return false;
       }
 
-      // Comparaisons directes (très rapides)
-      if (filterCat && !stringEquals(txn.category, filterCat)) return false;
-      if (filterSubCat && !stringEquals((txn as any).subCategory, filterSubCat)) return false;
-      if (filterType && !stringEquals(txn.type, filterType)) return false;
-      if (filterPerson && !stringEquals(txn.personId, filterPerson)) return false;
-      if (filterCountry && !stringEquals(txn.country?.toLowerCase(), filterCountry)) return false;
-
-      // Montants
-      if (minAmt !== null && Math.abs(txn.amount) < minAmt) return false;
-      if (maxAmt !== null && Math.abs(txn.amount) > maxAmt) return false;
-
-      // Dates (Comparaison ISO string - plus rapide que Date)
-      if (dFrom && txn.date < dFrom) return false;
-      if (dTo && txn.date > dTo) return false;
-
-      // Récurrence
-      if (filters.recurring !== 'all') {
-        if (filters.recurring === 'recurring' && !txn.isRecurring) return false;
-        if (filters.recurring === 'one-time' && txn.isRecurring) return false;
+      // 4. 🆕 FILTRE SOUS-CATÉGORIE SPÉCIFIQUE
+      if (filterSubCatValue) {
+        const matches = transactionMatchesSubCategory(txn.subCategory, filterSubCatValue);
+        if (!matches) return false;
       }
+
+      // 5. Filtre Type
+      if (filters.type !== 'all') {
+        if (filters.type === 'income' && txn.amount < 0) return false;
+        if (filters.type === 'expense' && txn.amount >= 0) return false;
+      }
+
+      // 6. Filtre Statut Division
+      if (filters.splitStatus && filters.splitStatus !== 'all') {
+        const isChild = !!txn.parentTransactionId;
+        
+        if (filters.splitStatus === 'split') {
+          // "Divisées uniquement" = opérations parentes OU leurs enfants
+          if (!hasChildren && !isChild) return false;
+        } else if (filters.splitStatus === 'not_split') {
+          // "Non divisées" = ni parente ni enfant
+          if (hasChildren || isChild) return false;
+        }
+      }
+
+      // 7. Filtres Standards
+      if (filters.person && filters.person !== 'all' && !stringEquals(txn.personId, filters.person)) return false;
+      if (filters.country && filters.country !== 'all' && !stringEquals(txn.country?.toLowerCase(), filters.country.toLowerCase())) return false;
+      
+      if (filters.amountMin && Math.abs(txn.amount) < parseFloat(filters.amountMin)) return false;
+      if (filters.amountMax && Math.abs(txn.amount) > parseFloat(filters.amountMax)) return false;
+      
+      if (filters.dateFrom && txn.date < filters.dateFrom) return false;
+      if (filters.dateTo && txn.date > filters.dateTo) return false;
 
       return true;
     });
 
-    // Tri final optimisé
-    return result.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0));
+    // Tri par date décroissante
+    return [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [
-    transactions, 
-    deferredSearchTerm,
-    filters.category, filters.subCategory, filters.type, filters.country, filters.person, 
-    filters.amountMin, filters.amountMax, filters.dateFrom, filters.dateTo, filters.recurring, filters.completion,
-    selectedRecurringIds, selectedTransactionId, anomalyFilter
+    transactions, deferredSearchTerm, filters, categoryLookup, categories,
+    selectedRecurringIds, selectedTransactionId, anomalyFilter, splitFamilyFilter,
+    normalizeCategoryValue, transactionMatchesCategory, transactionMatchesSubCategory
   ]);
 
   const totalAmountFiltered = useMemo(() => {
@@ -270,6 +405,99 @@ export function Transactions() {
   }, [selectedTransaction, recurringPredictions]);
 
   // ========================================
+  // 🆕 NAVIGATION INTELLIGENTE AVEC AUTO-SCROLL
+  // ========================================
+
+  /**
+   * Navigue vers une transaction spécifique avec :
+   * - Calcul automatique de la page
+   * - Changement de page si nécessaire
+   * - Réinitialisation des filtres si la transaction est masquée
+   * - Auto-scroll fluide vers la transaction
+   */
+  const navigateToTransaction = useCallback((targetId: string) => {
+    // 1. Chercher dans les transactions filtrées
+    let index = filteredTransactions.findIndex(t => t.id === targetId);
+    
+    // 2. Si introuvable, vérifier si elle existe dans les transactions brutes
+    if (index === -1) {
+      const existsInRaw = transactions.find(t => t.id === targetId);
+      if (existsInRaw) {
+        // La transaction existe mais est masquée par un filtre
+        toast.info("Réinitialisation des filtres pour localiser la transaction...", {
+          duration: 2000,
+        });
+        
+        // Réinitialiser tous les filtres
+        clearContextualFilters();
+        setFilters({
+          searchTerm: '',
+          category: 'all',
+          subCategory: 'all',
+          type: 'all',
+          country: 'all',
+          person: 'all',
+          amountMin: '',
+          amountMax: '',
+          dateFrom: '',
+          dateTo: '',
+          recurring: 'all',
+          splitStatus: 'all', // 🔧 FIX : Ajouter splitStatus pour éviter boucle infinie
+        });
+        
+        // Attendre le prochain cycle de rendu pour recalculer
+        setTimeout(() => {
+          navigateToTransaction(targetId);
+        }, 100);
+        return;
+      } else {
+        toast.error("Transaction introuvable");
+        return;
+      }
+    }
+
+    // 3. Calculer la page cible
+    const targetPage = Math.floor(index / pageSize) + 1;
+
+    // 4. Changer de page si nécessaire
+    if (currentPage !== targetPage) {
+      setCurrentPage(targetPage);
+    }
+
+    // 5. Mettre à jour la sélection (déclenchera le useEffect du scroll)
+    const targetTxn = filteredTransactions[index];
+    setSelectedTransaction(targetTxn);
+  }, [filteredTransactions, transactions, currentPage, pageSize, clearContextualFilters]);
+
+  /**
+   * Auto-scroll vers la transaction sélectionnée avec animation
+   */
+  useEffect(() => {
+    if (selectedTransaction) {
+      // Délai pour attendre le rendu de la nouvelle page
+      const scrollTimer = setTimeout(() => {
+        const element = document.getElementById(`txn-${selectedTransaction.id}`);
+        
+        if (element) {
+          // Scroll fluide vers l'élément
+          element.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          });
+
+          // Animation de highlight
+          element.classList.add('highlight-pulse-txn');
+          setTimeout(() => {
+            element.classList.remove('highlight-pulse-txn');
+          }, 2000);
+        }
+      }, 150);
+
+      return () => clearTimeout(scrollTimer);
+    }
+  }, [selectedTransaction, currentPage]); // Réagit aussi au changement de page
+
+  // ========================================
   // 3. HANDLERS ACTIONS (tous avec useCallback)
   // ========================================
 
@@ -309,6 +537,46 @@ export function Transactions() {
     await handleUpdateDatabase(updated);
     toast.success("Transaction supprimée");
     setSelectedTransaction(prev => prev?.id === id ? null : prev);
+  }, [transactions, handleUpdateDatabase]);
+
+  // 🆕 HANDLER DIVISION DE TRANSACTION
+  const handleSplitTransaction = useCallback(async (
+    originalTransaction: Transaction,
+    subTransactions: Partial<Transaction>[],
+    hideOriginal: boolean,
+    note?: string
+  ) => {
+    try {
+      const childIds = subTransactions.map(() => crypto.randomUUID());
+      
+      // Créer les sous-transactions
+      const children: Transaction[] = subTransactions.map((subTxn, index) => ({
+        ...originalTransaction,
+        ...subTxn,
+        id: childIds[index],
+        parentTransactionId: originalTransaction.id,
+      } as Transaction));
+      
+      // Mettre à jour la transaction originale
+      const updatedOriginal: Transaction = {
+        ...originalTransaction,
+        childTransactionIds: childIds,
+        isHidden: hideOriginal,
+        splitNote: note,
+      };
+      
+      // Remplacer l'originale et ajouter les enfants
+      const updated = transactions.map(t => 
+        t.id === originalTransaction.id ? updatedOriginal : t
+      ).concat(children);
+      
+      await handleUpdateDatabase(updated);
+      toast.success(`Transaction divisée en ${children.length} sous-transactions`);
+      setEditingTransaction(null);
+    } catch (error) {
+      console.error('Erreur lors de la division:', error);
+      toast.error('Erreur lors de la division de la transaction');
+    }
   }, [transactions, handleUpdateDatabase]);
 
   const handleImport = useCallback(async (newTransactionsRaw: CsvTransaction[]) => {
@@ -458,6 +726,30 @@ export function Transactions() {
 
       {/* BANDEAUX FILTRES CONTEXTUELS */}
       <AnimatePresence>
+        {splitFamilyFilter && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }} 
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="bg-orange-500/10 border-b border-orange-500/20 px-6 py-3 flex justify-between items-center"
+          >
+            <div className="flex items-center gap-3 text-sm text-orange-300">
+              <Split className="w-4 h-4" />
+              <span className="font-medium">Opération divisée</span>
+              <span className="text-white/60">({filteredTransactions.length} transactions)</span>
+            </div>
+            <button 
+              onClick={() => {
+                setSplitFamilyFilter(null);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-orange-500/20 border border-orange-500/30 hover:bg-orange-500/30 transition-colors text-white font-medium"
+            >
+              Voir tout
+            </button>
+          </motion.div>
+        )}
+        
         {activeFilterType === 'recurring' && selectedRecurringIds && (
           <motion.div 
             initial={{ height: 0, opacity: 0 }} 
@@ -605,6 +897,7 @@ export function Transactions() {
                       onTransactionClick={setSelectedTransaction}
                       onUpdate={handleUpdate}
                       onDelete={handleDelete}
+                      onSplit={(txn) => setSplittingTransaction(txn)} // 🆕 Handler pour diviser
                       categories={categories}
                       people={people}
                       selectedTransactionId={selectedTransactionId}
@@ -647,6 +940,47 @@ export function Transactions() {
             setSelectedTransaction(null);
           }}
           onDelete={handleDelete}
+          onSplit={(txn) => {
+            setSplittingTransaction(txn);
+            setSelectedTransaction(null);
+          }}
+          onNavigateToParent={(parentId) => {
+            // Navigation simple vers le parent UNIQUEMENT (pas toute la famille)
+            clearContextualFilters();
+            setSplitFamilyFilter(null);
+            
+            // Filtrer pour afficher UNIQUEMENT le parent
+            setSelectedTransactionId(parentId);
+            setCurrentPage(1);
+            
+            // Sélectionner la transaction parente
+            const parent = transactions.find(t => t.id === parentId);
+            if (parent) {
+              setSelectedTransaction(parent);
+              toast.success('Navigation vers l\'opération d\'origine');
+            } else {
+              toast.error('Opération d\'origine introuvable');
+            }
+          }}
+          onNavigateToChildren={(parentId, childIds) => {
+            // Filtrer pour afficher UNIQUEMENT la famille (parent + enfants)
+            const familyIds = [parentId, ...childIds];
+            
+            // Créer un filtre contextuel personnalisé
+            toast.info(`Affichage de l'opération divisée et ses ${childIds.length} sous-opérations`);
+            
+            // Filtrer les transactions pour n'afficher que cette famille
+            setSplitFamilyFilter(parentId);
+            setCurrentPage(1);
+          }}
+          onToggleHidden={(id, currentHiddenState) => {
+            // Basculer l'état isHidden
+            const updated = transactions.map(t => 
+              t.id === id ? { ...t, isHidden: !currentHiddenState } : t
+            );
+            handleUpdateDatabase(updated);
+            toast.success(currentHiddenState ? 'Opération visible dans les calculs' : 'Opération masquée des calculs');
+          }}
           categories={categories}
           people={people}
         />
@@ -671,6 +1005,17 @@ export function Transactions() {
             categories={categories}
             people={people}
             allTransactions={transactions}
+          />
+        )}
+        {splittingTransaction && (
+          <SplitTransactionDialog
+            transaction={splittingTransaction}
+            onClose={() => setSplittingTransaction(null)}
+            onSplit={(subTxns, hideOrig, note) => {
+              handleSplitTransaction(splittingTransaction, subTxns, hideOrig, note);
+              setSplittingTransaction(null);
+            }}
+            categories={categories}
           />
         )}
       </AnimatePresence>

@@ -7,11 +7,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
-// ❌ SUPPRIMÉ : import { db } from '../src/db'; - Fichier inexistant
-import { enrichPeopleWithStats } from '../src/utils/people-calculator';
-import { Transaction } from 'src/utils/csv-parser'; // ✅ Import unique depuis csv-parser
+import { Transaction as BaseTransaction } from 'src/utils/csv-parser'; // ✅ Import de base depuis csv-parser
 import { Rule } from '../types/rules'; // ✅ Import du vrai type Rule
-import { initializeCategoriesIfEmpty, type Category } from '../src/constants/default-categories'; // 🆕 Import des catégories par défaut
 
 // --- Types d'Entités (Plus spécifiques pour Dexie) ---
 
@@ -19,6 +16,31 @@ import { initializeCategoriesIfEmpty, type Category } from '../src/constants/def
 interface Entity {
   id: string;
   [key: string]: any;
+}
+
+// 🆕 Définition de Category
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  emoji?: string;
+  parentId?: string;
+}
+
+// 🆕 Extension de Transaction avec les champs pour la division
+export interface Transaction extends Omit<BaseTransaction, 'parentTransactionId' | 'childTransactionIds' | 'isHidden' | 'splitNote'> {
+  // Champs existants (hérités de BaseTransaction)
+  
+  // 🆕 Champs de catégorisation
+  subCategory?: string; // Sous-catégorie
+  merchant?: string; // Marchand/Commerçant
+  
+  // 🆕 Gestion des transactions divisées
+  parentTransactionId?: string; // ID de la transaction parente (si c'est une sous-transaction)
+  childTransactionIds?: string[]; // IDs des sous-transactions (si c'est une transaction divisée)
+  isHidden?: boolean; // Masquer la transaction des calculs (pour les transactions divisées)
+  splitNote?: string; // Note expliquant la division
 }
 
 export interface Person {
@@ -56,9 +78,8 @@ export interface EnrichedPerson extends Person {
 }
 
 // ✅ Réexport de Transaction pour faciliter l'import depuis DataContext
-export type { Transaction };
 export type { Rule }; // ✅ Réexport de Rule pour faciliter l'import
-export type { Category }; // ✅ Réexport de Category pour faciliter l'import
+// Category est déjà exporté via 'export interface Category' ci-dessus
 
 interface DataState {
   transactions: Transaction[];
@@ -150,15 +171,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setPeople(loadFromStorage(getStorageKey(userId, 'people'), []));
         setAccounts(loadFromStorage(getStorageKey(userId, 'accounts'), []));
         
-        // 🆕 Charger les catégories avec initialisation par défaut si vide
+        // Charger les catégories
         const loadedCategories = loadFromStorage<Category[]>(getStorageKey(userId, 'categories'), []);
-        const initializedCategories = initializeCategoriesIfEmpty(loadedCategories);
-        setCategories(initializedCategories);
-        
-        // Si des catégories par défaut ont été ajoutées, les sauvegarder
-        if (initializedCategories.length > 0 && loadedCategories.length === 0) {
-          saveToStorage(getStorageKey(userId, 'categories'), initializedCategories);
-        }
+        setCategories(loadedCategories);
         
         setRules(loadFromStorage(getStorageKey(userId, 'rules'), []));
         
@@ -175,35 +190,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // ✅ Fonctions de mise à jour mémoïsées avec useCallback
   const updateTransactions = useCallback((t: Transaction[]) => {
-    // 🛡️ Nettoyage et sécurisation des données
-    const sanitizedTransactions = t.map(txn => {
-      // Préparation d'une date stable au format YYYY-MM-DD si aucune date n'est fournie
-      const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    
+    const sanitizedTransactions = t.map(txn => ({
+      ...txn, // ✅ On garde TOUT (y compris subCategory, merchant, etc.)
       
-      return {
-        ...txn,
-        // 1. Évite l'écran blanc : force une chaîne de caractères pour la description
-        description: (txn.description || "Nouvelle opération").trim(),
-        
-        // 2. Assure un format numérique pour le montant
-        amount: typeof txn.amount === 'string' ? parseFloat(txn.amount) : (txn.amount || 0),
-        
-        // 3. Fix Date : Garde le format YYYY-MM-DD pour éviter les bugs de fuseaux horaires
-        // Si txn.date contient déjà un ISO complet, on extrait la partie date
-        date: (txn.date || today).split('T')[0],
-        
-        // 4. Catégorie par défaut
-        category: txn.category || "Non catégorisé",
-        
-        // 5. Métadonnées de suivi
-        updatedAt: new Date().toISOString()
-      };
-    });
+      // On s'assure juste que les champs vitaux ne sont pas vides
+      description: (txn.description || "Nouvelle opération").trim(),
+      amount: typeof txn.amount === 'string' ? parseFloat(txn.amount) : (txn.amount || 0),
+      date: (txn.date || today).split('T')[0],
+      category: txn.category || "Non catégorisé",
+      // ✅ On force la préservation explicite si besoin, mais le ...txn le fait déjà
+      subCategory: txn.subCategory, 
+      updatedAt: new Date().toISOString(),
+      
+      childTransactionIds: Array.isArray(txn.childTransactionIds) ? txn.childTransactionIds : txn.childTransactionIds
+    }));
   
-    // Mise à jour de l'état local
     setTransactions(sanitizedTransactions);
     
-    // Sauvegarde persistante
     if (accessToken) {
       saveToStorage(getStorageKey(accessToken, 'transactions'), sanitizedTransactions);
     }

@@ -34,110 +34,45 @@ import {
   Target,
   Zap,
   AlertTriangle,
-  ShieldAlert
+  ShieldAlert,
+  Split, // 🆕 Icône pour diviser
+  CornerDownRight // 🆕 Icône pour sous-transaction
 } from 'lucide-react';
 import { Transaction } from '../../contexts/DataContext';
 import { useRules } from '../../contexts/RulesContext';
 import { evaluateRule } from '../../src/utils/ruleEngine';
 import { formatCurrency } from '../../src/utils/format';
-import { isSimilarDescription, normalizeDescription } from 'src/utils/insights/projection';
-
-// ... (tes imports)
 
 interface RightPanelDetailsProps {
   transaction: Transaction | null;
-  prediction?: any; 
-  recurringPredictions?: any[]; // 🆕 Ajoute cette ligne pour recevoir la liste globale
+  prediction?: any; // 🆕 Prédiction récurrente
   onClose: () => void;
   onEdit?: (transaction: Transaction) => void;
   onDelete?: (id: string) => void;
+  onSplit?: (transaction: Transaction) => void; // 🆕 Callback pour diviser une transaction
+  onNavigateToParent?: (parentId: string) => void; // 🆕 Callback pour naviguer vers la transaction parente
+  onNavigateToChildren?: (parentId: string, childIds: string[]) => void; // 🆕 Callback pour naviguer vers les sous-transactions
+  onToggleHidden?: (id: string, currentHiddenState: boolean) => void; // 🆕 Callback pour masquer/afficher
   categories?: Array<{ name: string; color?: string; icon?: string; emoji?: string }>;
   people?: Array<{ id: string; name: string; avatar?: string; color?: string }>;
 }
 
 export function RightPanelDetails({ 
   transaction,
-  prediction, 
-  recurringPredictions = [], // 🆕 Récupère la liste
+  prediction, // 🆕 Récupération de la prop
   onClose, 
   onEdit,
   onDelete,
+  onSplit, // 🆕
+  onNavigateToParent, // 🆕
+  onNavigateToChildren, // 🆕
+  onToggleHidden, // 🆕
   categories = [],
   people = []
 }: RightPanelDetailsProps) {
   
   // --- HOOKS ---
   const { rules } = useRules();
-
-// 🆕 Matching robuste multi-critères (libellé fuzzy + montant + date ±7j)
-// Dans RightPanelDetails.tsx
-
-const matchedPrediction = useMemo(() => {
-  // Sécurité de base
-  if (!transaction || !recurringPredictions || recurringPredictions.length === 0) return null;
-
-  // Si on a déjà une prédiction passée en props directe, on la prend
-  if (prediction) return prediction;
-
-  console.groupCollapsed(`🕵️‍♀️ [RightPanel] Recherche de récurrence pour : ${transaction.description}`);
-  
-  // 1. Recherche par ID (La méthode royale)
-  const byId = recurringPredictions.find(p => 
-    p.transactionIds && p.transactionIds.includes(transaction.id)
-  );
-
-  if (byId) {
-    console.log("✅ MATCH PAR ID TROUVÉ !", byId.description);
-    console.groupEnd();
-    return byId;
-  }
-
-  console.log("⚠️ Pas de match par ID, tentative de matching flou...");
-
-  // 2. Recherche par similarité (Fuzzy Matching assoupli)
-  const txnAmount = Math.abs(transaction.amount);
-  const txnDate = new Date(transaction.date).getTime();
-
-  const found = recurringPredictions.find(p => {
-    // A. Comparaison de description (Normalisée et Nettoyée)
-    const isDescSimilar = isSimilarDescription(transaction.description, p.description);
-    
-    if (!isDescSimilar) return false;
-
-    // B. Comparaison de montant (On autorise 20% d'écart ou 5€ fixe pour les petits montants)
-    const pAmount = Math.abs(p.amount);
-    const diffAmount = Math.abs(txnAmount - pAmount);
-    const isAmountClose = diffAmount < (txnAmount * 0.20) || diffAmount < 5.0;
-
-    // C. Comparaison de date (On autorise jusqu'à 10 jours de décalage)
-    // Attention : p.lastDate peut être une string
-    const pDate = new Date(p.lastDate).getTime();
-    if (isNaN(pDate)) return false; // Sécurité date invalide
-    
-    const diffDays = Math.abs(txnDate - pDate) / (1000 * 60 * 60 * 24);
-    const isDateClose = diffDays <= 10; 
-
-    // Log des candidats potentiels pour comprendre l'échec
-    console.log(`   Candidat "${p.description}" :`, {
-      matchDesc: isDescSimilar,
-      matchAmount: isAmountClose ? `OK (Diff: ${diffAmount.toFixed(2)})` : `KO (Diff: ${diffAmount.toFixed(2)})`,
-      matchDate: isDateClose ? `OK (${diffDays.toFixed(1)}j)` : `KO (${diffDays.toFixed(1)}j)`
-    });
-
-    return isAmountClose; // Note: On ne force pas la date si description + montant matchent fort
-  });
-
-  if (found) {
-    console.log("✅ MATCH FLOU TROUVÉ :", found.description);
-  } else {
-    console.log("❌ Aucun match trouvé.");
-  }
-  
-  console.groupEnd();
-  return found || null;
-}, [transaction, recurringPredictions, prediction]);
-
-  // ... (garde la suite de tes useMemo : category, person, isIncome, etc.)
 
   // --- COMPUTED VALUES ---
   const category = useMemo(() => 
@@ -153,6 +88,17 @@ const matchedPrediction = useMemo(() => {
   const isIncome = useMemo(() => 
     (transaction?.amount || 0) >= 0,
     [transaction?.amount]
+  );
+
+  // 🆕 Vérifier si la transaction a des sous-transactions
+  const hasChildTransactions = useMemo(() => 
+    !!(transaction as any)?.childTransactionIds && (transaction as any).childTransactionIds.length > 0,
+    [transaction]
+  );
+
+  const childCount = useMemo(() => 
+    (transaction as any)?.childTransactionIds?.length || 0,
+    [transaction]
   );
 
   // Évaluer quelles règles matchent cette transaction
@@ -212,6 +158,12 @@ const matchedPrediction = useMemo(() => {
       onClose();
     }
   }, [transaction, onDelete, onClose]);
+
+  const handleSplit = useCallback(() => {
+    if (transaction && onSplit) {
+      onSplit(transaction);
+    }
+  }, [transaction, onSplit]);
 
   // Ne rien afficher si pas de transaction
   if (!transaction) {
@@ -273,6 +225,97 @@ const matchedPrediction = useMemo(() => {
         {/* BODY */}
         <div className="p-4 space-y-3">
           
+          {/* 🆕 LIEN VERS TRANSACTION PARENTE (si sous-transaction) */}
+          {(transaction as any).parentTransactionId && (
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center flex-shrink-0">
+                  <CornerDownRight className="w-5 h-5 text-purple-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-purple-300 font-medium mb-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Sous-opération
+                  </p>
+                  <p className="text-sm text-white/70">
+                    Cette transaction fait partie d'une opération divisée
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  // Trouver la transaction parente et la sélectionner
+                  const parentId = (transaction as any).parentTransactionId;
+                  // TODO: Appeler un callback pour naviguer vers la transaction parente
+                  onNavigateToParent?.(parentId);
+                }}
+                className="mt-3 w-full py-2 px-3 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 hover:text-purple-200 text-sm font-medium transition-all flex items-center justify-center gap-2"
+              >
+                <TrendingUp className="w-4 h-4" />
+                Voir l'opération d'origine
+              </button>
+            </div>
+          )}
+
+          {/* 🆕 INDICATEUR TRANSACTION DIVISÉE (si transaction parente) */}
+          {hasChildTransactions && (
+            <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center flex-shrink-0">
+                  <Split className="w-5 h-5 text-orange-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-orange-300 font-medium mb-1 flex items-center gap-1">
+                    <Split className="w-3 h-3" />
+                    Opération divisée
+                  </p>
+                  <p className="text-sm text-white/70">
+                    Cette transaction a été divisée en <span className="font-semibold text-orange-300">{childCount} sous-opérations</span>
+                  </p>
+                </div>
+              </div>
+              {(transaction as any).splitNote && (
+                <div className="mt-3 p-2 rounded-lg bg-black/20 border border-orange-500/20">
+                  <p className="text-xs text-white/60">
+                    <span className="text-orange-300 font-medium">Note:</span> {(transaction as any).splitNote}
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  const childIds = (transaction as any).childTransactionIds || [];
+                  onNavigateToChildren?.(transaction.id, childIds);
+                }}
+                className="mt-3 w-full py-2 px-3 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 hover:text-orange-200 text-sm font-medium transition-all flex items-center justify-center gap-2"
+              >
+                <CornerDownRight className="w-4 h-4" />
+                Voir les {childCount} sous-opérations
+              </button>
+              
+              {/* Bouton pour masquer/afficher */}
+              {onToggleHidden && (
+                <button
+                  onClick={() => {
+                    onToggleHidden(transaction.id, !!(transaction as any).isHidden);
+                  }}
+                  className="mt-2 w-full py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white/90 text-sm font-medium transition-all flex items-center justify-center gap-2"
+                >
+                  {(transaction as any).isHidden ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Afficher dans les calculs
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-4 h-4" />
+                      Masquer des calculs
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* HERO - MONTANT */}
           <div className={`relative overflow-hidden rounded-xl border p-6 ${
             isIncome 
@@ -383,9 +426,6 @@ const matchedPrediction = useMemo(() => {
             )}
           </div>
 
-
-          
-
           {/* SECTION RÈGLES DÉTECTÉES */}
           {matchedRules.length > 0 && (
             <div className="space-y-2 pt-2">
@@ -468,82 +508,67 @@ const matchedPrediction = useMemo(() => {
             </div>
           )}
 
-{/* SECTION ANALYSE PRÉDICTIVE DYNAMIQUE */}
-{prediction && (
-            <div className="space-y-2 pt-4">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400/80 px-1 flex items-center gap-2">
+          {/* SECTION ANALYSE PRÉDICTIVE */}
+          {prediction && (
+            <div className="space-y-2 pt-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-1 flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5" />
-                Intelligence Artificielle
+                Analyse Prédictive
               </div>
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-500/15 to-purple-500/5 p-4 space-y-3 shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+                className="rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 to-purple-500/5 p-4 space-y-3 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
               >
-                {/* En-tête avec Score de Confiance */}
+                {/* En-tête */}
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0 border border-purple-500/20">
-                    <Repeat className="w-5 h-5 text-purple-400" />
+                  <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-5 h-5 text-purple-400" />
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h5 className="text-sm font-medium text-white/90">Suite Logique Détectée</h5>
-                      <div className={`px-2 py-0.5 rounded text-[10px] font-medium border flex items-center gap-1 ${
-                        prediction.confidence >= 90
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                      <h5 className="text-sm font-medium text-white/90">Transaction récurrente détectée</h5>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                        prediction.confidence === 'high' 
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : prediction.confidence === 'medium'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
                       }`}>
-                        <Target className="w-3 h-3" />
-                        {prediction.confidence}% de probabilité
-                      </div>
+                        Fiabilité {prediction.confidence === 'high' ? 'Haute' : prediction.confidence === 'medium' ? 'Moyenne' : 'Basse'}
+                      </span>
                     </div>
-                    {/* Le texte explicatif EXACT */}
-                    <p className="text-xs text-purple-200/60 leading-relaxed">
-                      Cette transaction appartient à une récurrence identifiée <span className="text-purple-300 font-medium">
-                        {prediction.transactionIds?.length || prediction.occurrences} fois
-                      </span> dans votre historique.
+                    <p className="text-xs text-purple-200/70 leading-relaxed">
+                      Cette opération apparaît en moyenne tous les <span className="text-purple-300 font-medium">{prediction.intervalDays} jours</span>
                     </p>
                   </div>
                 </div>
 
-                {/* Grille de détails */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Détails */}
+                <div className="grid grid-cols-2 gap-2">
                   <div className="bg-white/5 border border-white/10 rounded-lg p-2.5">
-                    <p className="text-[10px] text-white/40 uppercase mb-1 font-bold">Cycle Moyen</p>
-                    <p className="text-xs font-medium text-white/90">
-                      Tous les {prediction.intervalDays} jours
-                    </p>
+                    <p className="text-[10px] text-white/40 uppercase mb-1">Fréquence</p>
+                    <p className="text-xs font-medium text-white/80">{prediction.occurrences} fois en 6 mois</p>
                   </div>
                   <div className="bg-white/5 border border-white/10 rounded-lg p-2.5">
-                    <p className="text-[10px] text-white/40 uppercase mb-1 font-bold">Prochaine échéance</p>
+                    <p className="text-[10px] text-white/40 uppercase mb-1">Prochain estimé</p>
                     <p className="text-xs font-medium text-purple-300">
-                      {new Date(prediction.nextExpectedDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                      {new Date(prediction.nextExpectedDate).toLocaleDateString('fr-FR', { 
+                        day: 'numeric', 
+                        month: 'short',
+                        year: 'numeric'
+                      })}
                     </p>
                   </div>
                 </div>
 
-                {/* Montant Habituel */}
-                <div className="bg-black/30 rounded-lg p-3 border border-white/5 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-white/40 uppercase font-bold">Montant Habituel</span>
-                    <span className="text-sm font-medium text-purple-300">
-                      {formatCurrency(prediction.amount)}
-                    </span>
-                  </div>
-                  {/* Petit graphique circulaire de confiance */}
-                  <div className="w-8 h-8 relative" title={`Confiance : ${prediction.confidence}%`}>
-                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                      <circle cx="18" cy="18" r="16" fill="none" className="stroke-white/5" strokeWidth="4" />
-                      <circle 
-                        cx="18" cy="18" r="16" fill="none" 
-                        className={prediction.confidence >= 90 ? "stroke-emerald-500" : "stroke-purple-500"}
-                        strokeWidth="4" 
-                        strokeDasharray={`${prediction.confidence}, 100`}
-                        strokeLinecap="round"
-                      />
-                    </svg>
+                {/* Montant moyen */}
+                <div className="bg-black/20 rounded-lg p-3 border border-white/5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/60">Montant moyen</span>
+                    <span className="text-sm font-medium text-purple-300">{formatCurrency(prediction.amount)}</span>
                   </div>
                 </div>
               </motion.div>
@@ -567,7 +592,8 @@ const matchedPrediction = useMemo(() => {
                       <p className="text-sm text-white/90">
                         {transaction.type === 'online' && '🌐 Paiement en ligne'}
                         {transaction.type === 'physical' && '🏪 Magasin physique'}
-                        const isSpecialType = (transaction.type as string) === 'withdrawal' || (transaction.type as string) === 'transfer';
+                        {transaction.type === 'withdrawal' && '💵 Retrait'}
+                        {transaction.type === 'transfer' && '🔄 Virement'}
                       </p>
                     </div>
                   </div>
@@ -714,6 +740,15 @@ const matchedPrediction = useMemo(() => {
                 title="Supprimer"
               >
                 <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            {onSplit && (
+              <button
+                onClick={handleSplit}
+                className="bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 text-purple-400 rounded-lg py-2.5 px-4 flex items-center justify-center transition-all hover:shadow-lg hover:shadow-purple-500/20"
+                title="Diviser"
+              >
+                <Split className="w-4 h-4" />
               </button>
             )}
           </div>

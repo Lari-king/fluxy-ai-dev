@@ -19,8 +19,6 @@ import {
   TrendingDown,
   Sparkles,
   AlertTriangle,
-  Calendar,
-  Repeat,
   ArrowRight
 } from 'lucide-react';
 import { Transaction } from '../../../contexts/DataContext';
@@ -47,10 +45,29 @@ export const ProjectionDetailsModal = memo(function ProjectionDetailsModal({
 }: ProjectionDetailsModalProps) {
   
   const [isMethodologyOpen, setIsMethodologyOpen] = useState(false);
+  const [isRecurrencesDetailOpen, setIsRecurrencesDetailOpen] = useState(false);
   
   // Calculs
   const pastTransactions = projection.details.pastTransactions;
   const recurringPredictions = projection.details.recurringPredictions;
+  
+  // 🆕 Filtre : uniquement les récurrences PRÉVUES CE MOIS
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const endOfMonth = new Date(currentYear, currentMonth, lastDayOfMonth, 23, 59, 59);
+  
+  const recurringThisMonth = recurringPredictions.filter((p: any) => {
+    const nextDate = new Date(p.nextExpectedDate);
+    return nextDate > now && nextDate <= endOfMonth;
+  });
+  
+  const revenuesThisMonth = recurringThisMonth.filter((p: any) => p.type === 'revenue');
+  const expensesThisMonth = recurringThisMonth.filter((p: any) => p.type === 'expense');
+  
+  const totalRecurringRevenueThisMonth = revenuesThisMonth.reduce((sum: number, p: any) => sum + p.amount, 0);
+  const totalRecurringExpenseThisMonth = expensesThisMonth.reduce((sum: number, p: any) => sum + Math.abs(p.amount), 0);
   
   const totalPastRevenue = pastTransactions
     .filter((t: Transaction) => t.amount > 0)
@@ -88,25 +105,18 @@ export const ProjectionDetailsModal = memo(function ProjectionDetailsModal({
     }));
   }, [recurringPredictions]);
 
-// Remplace le bloc handleRecurringClick (autour de la ligne 398) par celui-ci :
-const handleRecurringClick = (pred: any) => {
-  // 1. Priorité aux IDs précis fournis par le moteur de projection
-  if (pred.transactionIds && pred.transactionIds.length > 0) {
-    onFilterByRecurring?.(pred.transactionIds);
-    return;
-  }
-
-  // 2. Fallback au cas où (recherche par nom normalisé)
-  const related = transactions.filter(t => 
-    normalizeDescription(t.description) === normalizeDescription(pred.description)
-  );
-
-  if (related.length > 0) {
-    onFilterByRecurring?.(related.map(t => t.id));
-  } else {
-    console.warn(`[ProjectionModal] Aucune transaction trouvée pour "${pred.rawDescription || pred.description}" – matching trop strict`);
-  }
-};
+  const handleRecurringClick = (pred: any) => {
+    const normalizedPredDesc = normalizeDescription(pred.description);
+    const matchingTransactions = transactions.filter(t => {
+      const normalizedTxnDesc = normalizeDescription(t.description);
+      return isSimilarDescription(normalizedTxnDesc, normalizedPredDesc);
+    });
+    
+    if (matchingTransactions.length > 0) {
+      // Ne pas fermer la modale, simplement appliquer le filtre
+      onFilterByRecurring?.(matchingTransactions.map(t => t.id));
+    }
+  };
 
   const getFrequencyLabel = (pred: any) => {
     if (pred.description.toLowerCase().includes('mensuel') || pred.description.toLowerCase().includes('salaire')) {
@@ -280,6 +290,162 @@ const handleRecurringClick = (pred: any) => {
                         <span className="text-xs text-purple-300">+ Récurrences prévues</span>
                         <span className="text-xs text-purple-400 font-mono">{formatCurrency(totalRecurringRevenue - totalRecurringExpense)}</span>
                       </div>
+                      
+                      {/* 🆕 DÉTAIL EXPANDABLE DES RÉCURRENCES CE MOIS */}
+                      {recurringThisMonth.length > 0 && (
+                        <div className="rounded-lg border border-purple-500/20 overflow-hidden">
+                          <button
+                            onClick={() => setIsRecurrencesDetailOpen(!isRecurrencesDetailOpen)}
+                            className="w-full flex items-center justify-between p-2.5 bg-purple-500/10 hover:bg-purple-500/15 transition-colors"
+                          >
+                            <span className="text-xs text-purple-300 font-medium">
+                              📋 Détail des récurrences ce mois ({recurringThisMonth.length})
+                            </span>
+                            <ChevronDown 
+                              className={`w-3.5 h-3.5 text-purple-400 transition-transform ${
+                                isRecurrencesDetailOpen ? 'rotate-180' : ''
+                              }`} 
+                            />
+                          </button>
+                          
+                          <AnimatePresence>
+                            {isRecurrencesDetailOpen && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="border-t border-purple-500/20"
+                              >
+                                <div className="p-3 bg-black/20 space-y-3">
+                                  {/* REVENUS */}
+                                  {revenuesThisMonth.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-green-400 font-medium mb-2">
+                                        ✅ Revenus récurrents ({revenuesThisMonth.length})
+                                      </p>
+                                      <div className="space-y-1.5">
+                                        {revenuesThisMonth.map((pred: any, idx: number) => (
+                                          <div 
+                                            key={idx}
+                                            className="p-2 rounded bg-green-500/10 border border-green-500/20"
+                                          >
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                              <p className="text-xs text-white/90 leading-tight flex-1">
+                                                {pred.rawDescription.substring(0, 50)}
+                                              </p>
+                                              <span className="text-xs text-green-400 font-mono font-medium whitespace-nowrap">
+                                                +{formatCurrency(pred.amount)}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-[10px] text-white/40">
+                                                📅 {new Date(pred.nextExpectedDate).toLocaleDateString('fr-FR')}
+                                              </span>
+                                              <span className="text-[10px] text-white/40">•</span>
+                                              <span className="text-[10px] text-white/40">
+                                                📊 {Math.round(pred.confidence)}% confiance
+                                              </span>
+                                              <span className="text-[10px] text-white/40">•</span>
+                                              <span className="text-[10px] text-white/40">
+                                                🔄 {pred.occurrences} fois (tous les {pred.intervalDays}j)
+                                              </span>
+                                            </div>
+                                            {pred.category && (
+                                              <p className="text-[10px] text-green-400/60 mt-1">
+                                                🏷️ {pred.category}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="mt-2 p-2 rounded bg-green-500/20 border border-green-500/30">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-green-300 font-medium">Total revenus</span>
+                                          <span className="text-xs text-green-400 font-mono font-bold">
+                                            +{formatCurrency(totalRecurringRevenueThisMonth)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* DÉPENSES */}
+                                  {expensesThisMonth.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-red-400 font-medium mb-2">
+                                        ❌ Dépenses récurrentes ({expensesThisMonth.length})
+                                      </p>
+                                      <div className="space-y-1.5">
+                                        {expensesThisMonth.map((pred: any, idx: number) => (
+                                          <div 
+                                            key={idx}
+                                            className="p-2 rounded bg-red-500/10 border border-red-500/20"
+                                          >
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                              <p className="text-xs text-white/90 leading-tight flex-1">
+                                                {pred.rawDescription.substring(0, 50)}
+                                              </p>
+                                              <span className="text-xs text-red-400 font-mono font-medium whitespace-nowrap">
+                                                {formatCurrency(pred.amount)}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-[10px] text-white/40">
+                                                📅 {new Date(pred.nextExpectedDate).toLocaleDateString('fr-FR')}
+                                              </span>
+                                              <span className="text-[10px] text-white/40">•</span>
+                                              <span className="text-[10px] text-white/40">
+                                                📊 {Math.round(pred.confidence)}% confiance
+                                              </span>
+                                              <span className="text-[10px] text-white/40">•</span>
+                                              <span className="text-[10px] text-white/40">
+                                                🔄 {pred.occurrences} fois (tous les {pred.intervalDays}j)
+                                              </span>
+                                            </div>
+                                            {pred.category && (
+                                              <p className="text-[10px] text-red-400/60 mt-1">
+                                                🏷️ {pred.category}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="mt-2 p-2 rounded bg-red-500/20 border border-red-500/30">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs text-red-300 font-medium">Total dépenses</span>
+                                          <span className="text-xs text-red-400 font-mono font-bold">
+                                            -{formatCurrency(totalRecurringExpenseThisMonth)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* NET */}
+                                  <div className="p-2.5 rounded-lg bg-purple-500/20 border border-purple-500/40">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-white font-bold">Impact net ce mois</span>
+                                      <span 
+                                        className="text-sm font-mono font-bold"
+                                        style={{
+                                          color: (totalRecurringRevenueThisMonth - totalRecurringExpenseThisMonth) >= 0
+                                            ? 'rgb(34, 197, 94)'
+                                            : 'rgb(239, 68, 68)'
+                                        }}
+                                      >
+                                        {(totalRecurringRevenueThisMonth - totalRecurringExpenseThisMonth) >= 0 ? '+' : ''}
+                                        {formatCurrency(totalRecurringRevenueThisMonth - totalRecurringExpenseThisMonth)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      )}
+                      
                       <div className="flex items-center justify-between p-3 rounded-lg bg-purple-500/20 border-2 border-purple-500/40">
                         <span className="text-sm text-white font-medium">= Projection finale</span>
                         <span className="text-base text-white font-mono font-bold">{formatCurrency(projection.projectedBalance)}</span>
@@ -303,183 +469,130 @@ const handleRecurringClick = (pred: any) => {
                 <p className="text-sm text-white/40">Aucune transaction ce mois-ci</p>
               </div>
             ) : (
-<div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
-  <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
-    {projection.details.pastTransactions
-      .sort((a: Transaction, b: Transaction) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .map((txn: Transaction, idx: number) => {
-        // Fallbacks sécurisés (pas de .parsed)
-        const merchantName = txn.description || 'Transaction sans nom';
-        const categoryName = txn.category || 'Non classifiée';
-        const isRevenue = txn.amount > 0;
-        const colorKey = isRevenue ? 'green' : 'red';
-        const colors = colorMap[colorKey];
-        const Icon = isRevenue ? TrendingUp : TrendingDown;
-
-        return (
-          <button
-            key={txn.id}
-            onClick={() => onFilterByTransaction?.(txn.id)}
-            className={`group w-full p-3 flex items-center gap-3 hover:bg-cyan-500/10 transition-all ${
-              idx !== projection.details.pastTransactions.length - 1 ? 'border-b border-white/5' : ''
-            }`}
-          >
-            <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
-              <Icon className={`w-4 h-4 ${colors.text}`} />
-            </div>
-            
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
-                {merchantName}
-              </p>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
-                  {categoryName}
-                </span>
-                <span className="text-xs text-white/40">
-                  {new Date(txn.date).toLocaleDateString('fr-FR', {
-                    day: 'numeric',
-                    month: 'short'
-                  })}
-                </span>
+              <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 overflow-hidden">
+                <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
+                  {parsedTransactions
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .map((txn: any, idx: number) => {
+                      const colors = colorMap[txn.parsed.color];
+                      const Icon = txn.parsed.icon;
+                      
+                      return (
+                        <button
+                          key={txn.id}
+                          onClick={() => onFilterByTransaction?.(txn.id)}
+                          className={`group w-full p-3 flex items-center gap-3 hover:bg-cyan-500/10 transition-all ${
+                            idx !== parsedTransactions.length - 1 ? 'border-b border-white/5' : ''
+                          }`}
+                        >
+                          <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
+                            <Icon className={`w-4 h-4 ${colors.text}`} />
+                          </div>
+                          
+                          <div className="flex-1 min-w-0 text-left">
+                            <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
+                              {txn.parsed.merchant}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
+                                {txn.parsed.category}
+                              </span>
+                              <span className="text-xs text-white/40">
+                                {new Date(txn.date).toLocaleDateString('fr-FR', {
+                                  day: 'numeric',
+                                  month: 'short'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <span 
+                            className="text-sm font-mono font-medium flex-shrink-0"
+                            style={{
+                              color: txn.amount > 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+                            }}
+                          >
+                            {txn.amount > 0 ? '+' : ''}{formatCurrency(txn.amount)}
+                          </span>
+                        </button>
+                      );
+                    })
+                  }
+                </div>
               </div>
-            </div>
-            
-            <span 
-              className="text-sm font-mono font-medium flex-shrink-0"
-              style={{
-                color: isRevenue ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-              }}
-            >
-              {isRevenue ? '+' : ''}{formatCurrency(txn.amount)}
-            </span>
-          </button>
-        );
-      })
-    }
-  </div>
-</div>
             )}
           </div>
 
           {/* RÉCURRENCES PRÉDITES */}
           <div>
             <div className="mb-4">
-              <h3 className="text-sm text-white/90 font-medium mb-1">Récurrences prédites</h3>
-              <p className="text-xs text-white/40">{recurringPredictions.length} prévision{recurringPredictions.length > 1 ? 's' : ''}</p>
+              <h3 className="text-sm text-white/90 font-medium mb-1">Récurrences prédites ce mois</h3>
+              <p className="text-xs text-white/40">{recurringThisMonth.length} prévision{recurringThisMonth.length > 1 ? 's' : ''} • Impact: {formatCurrency(totalRecurringRevenueThisMonth - totalRecurringExpenseThisMonth)}</p>
             </div>
 
-            {parsedRecurrences.length === 0 ? (
+            {recurringThisMonth.length === 0 ? (
               <div className="rounded-xl border border-white/10 bg-white/5 p-12 text-center">
                 <p className="text-sm text-white/40">Aucune récurrence prédite pour ce mois</p>
               </div>
             ) : (
               <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 overflow-hidden">
                 <div className="max-h-[280px] overflow-y-auto scrollbar-thin">
-                  {parsedRecurrences
+                  {recurringThisMonth
                     .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount))
                     .map((pred: any, idx: number) => {
-                      const colors = colorMap[pred.pattern.color];
-                      const Icon = pred.pattern.icon;
+                      const parsedName = parseTransactionDescription(pred.description || pred.rawDescription).merchant;
+                      const pattern = getRecurrencePattern(pred.description || pred.rawDescription);
+                      const colors = colorMap[pattern.color];
+                      const Icon = pattern.icon;
+                      const confidencePercent = Math.round(pred.confidence);
                       const confidenceColor = 
-                        pred.confidence === 'high' ? 'green' :
-                        pred.confidence === 'medium' ? 'yellow' : 'orange';
+                        confidencePercent >= 80 ? 'green' :
+                        confidencePercent >= 60 ? 'yellow' : 'orange';
                       const confidenceColors = colorMap[confidenceColor];
                       
                       return (
-<button
-  key={idx}
-  onClick={() => {
-    console.group(`🔍 [Debug Match] ${pred.description}`);
-    
-    // 1. PRIORITÉ : Utiliser les IDs déjà détectés par le système de récurrence
-    // On vérifie si pred.transactionIds existe (il vient du worker)
-    if (pred.transactionIds && pred.transactionIds.length > 0) {
-      console.log("✅ Utilisation des IDs fournis par le worker :", pred.transactionIds);
-      onFilterByRecurring?.(pred.transactionIds);
-      onClose(); // Optionnel : ferme la modale pour voir le résultat
-      console.groupEnd();
-      return;
-    }
-
-    // 2. FALLBACK : Si le worker n'a pas fourni d'IDs, on fait une recherche manuelle assouplie
-    console.warn("⚠️ Pas d'IDs pré-calculés, tentative de matching manuel...");
-    
-    const matchingTxns = transactions.filter(t => {
-      // Description : On utilise le helper de similarité
-      const similarDesc = isSimilarDescription(t.description, pred.description);
-      
-      // Montant : On assouplit la tolérance (20% d'écart autorisé ou 2€ de marge fixe)
-      const diffAmount = Math.abs(Math.abs(t.amount) - Math.abs(pred.amount));
-      const amountTolerance = diffAmount < (Math.abs(pred.amount) * 0.20) || diffAmount < 2;
-      
-      return similarDesc && amountTolerance;
-    });
-
-    // Extraction et validation des IDs trouvés manuellement
-    const validIds = matchingTxns
-      .map(t => t.id)
-      .filter(id => id && (typeof id === 'string' || typeof id === 'number'));
-
-    if (validIds.length > 0) {
-      console.log(`✅ Match manuel réussi : ${validIds.length} transactions trouvées.`);
-      onFilterByRecurring?.(validIds);
-      onClose();
-    } else {
-      console.error(`❌ Échec total : Aucune transaction ne correspond à "${pred.description}"`);
-      // Ici on peut filtrer uniquement par description en dernier recours
-      const descOnlyMatches = transactions
-        .filter(t => isSimilarDescription(t.description, pred.description))
-        .map(t => t.id);
-      
-      if (descOnlyMatches.length > 0) {
-        console.log("ℹ️ Tentative de secours : Match par description uniquement.");
-        onFilterByRecurring?.(descOnlyMatches);
-        onClose();
-      }
-    }
-    console.groupEnd();
-  }}
-  className={`group w-full p-3 flex items-center gap-3 hover:bg-purple-500/10 transition-all ${
-    idx !== parsedRecurrences.length - 1 ? 'border-b border-white/5' : ''
-  }`}
->
-  {/* Garde TOUT le contenu intérieur tel quel */}
-  <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
-    <Icon className={`w-4 h-4 ${colors.text}`} />
-  </div>
-  
-  <div className="flex-1 min-w-0 text-left">
-    <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
-      {pred.parsedName}
-    </p>
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
-        {pred.pattern.type}
-      </span>
-      <span className={`text-xs px-1.5 py-0.5 rounded ${confidenceColors.bg} ${confidenceColors.text} border ${confidenceColors.border}`}>
-        {pred.confidence === 'high' ? '✓ Haute' :
-         pred.confidence === 'medium' ? '~ Moyenne' :
-         '! Faible'}
-      </span>
-      <span className="text-xs text-white/40">
-        {new Date(pred.nextExpectedDate).toLocaleDateString('fr-FR', {
-          day: 'numeric',
-          month: 'short'
-        })}
-      </span>
-    </div>
-  </div>
-  
-  <span 
-    className="text-sm font-mono font-medium flex-shrink-0"
-    style={{
-      color: pred.type === 'revenue' ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-    }}
-  >
-    {pred.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(pred.amount))}
-  </span>
-</button>
+                        <button
+                          key={idx}
+                          onClick={() => handleRecurringClick(pred)}
+                          className={`group w-full p-3 flex items-center gap-3 hover:bg-purple-500/10 transition-all ${
+                            idx !== recurringThisMonth.length - 1 ? 'border-b border-white/5' : ''
+                          }`}
+                        >
+                          <div className={`w-9 h-9 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center flex-shrink-0`}>
+                            <Icon className={`w-4 h-4 ${colors.text}`} />
+                          </div>
+                          
+                          <div className="flex-1 min-w-0 text-left">
+                            <p className="text-sm text-white/90 mb-1 group-hover:text-white transition-colors truncate">
+                              {parsedName}
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${colors.bg} ${colors.text} border ${colors.border}`}>
+                                {pattern.type}
+                              </span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${confidenceColors.bg} ${confidenceColors.text} border ${confidenceColors.border}`}>
+                                {confidencePercent >= 80 ? '✓ Haute' :
+                                 confidencePercent >= 60 ? '~ Moyenne' :
+                                 '! Faible'}
+                              </span>
+                              <span className="text-xs text-white/40">
+                                {new Date(pred.nextExpectedDate).toLocaleDateString('fr-FR', {
+                                  day: 'numeric',
+                                  month: 'short'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <span 
+                            className="text-sm font-mono font-medium flex-shrink-0"
+                            style={{
+                              color: pred.type === 'revenue' ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+                            }}
+                          >
+                            {pred.type === 'revenue' ? '+' : '-'}{formatCurrency(Math.abs(pred.amount))}
+                          </span>
+                        </button>
                       );
                     })
                   }

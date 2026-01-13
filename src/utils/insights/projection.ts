@@ -1,4 +1,8 @@
 import { Transaction } from 'src/utils/csv-parser';
+import { 
+  getCategoryBehavioralProfileCached, 
+  type BehavioralAxis
+} from './behavioralAxes';
 
 // --- TYPES ---
 export interface RecurringPrediction {
@@ -12,8 +16,14 @@ export interface RecurringPrediction {
   intervalDays: number;
   lastDate: string;
   nextExpectedDate: string;
-  confidence: number; // Modifié en number pour le score de probabilité
+  confidence: number;
   confidenceLevel: 'high' | 'medium' | 'low';
+  category?: string;
+  behavior?: 'STRICT' | 'FLEXIBLE' | 'BURN_RATE';
+  // 🆕 NOUVEAUX CHAMPS COMPORTEMENTAUX
+  behavioralAxis?: BehavioralAxis;
+  compressibilityScore?: number;
+  priority?: number;
 }
 
 export interface MonthEndProjection {
@@ -43,7 +53,6 @@ interface ProjectionSettings {
   userAge?: number;
 }
 
-
 export interface DailyGoal {
   current: number;
   target: number;
@@ -52,20 +61,88 @@ export interface DailyGoal {
   severity: 'safe' | 'warning' | 'danger';
 }
 
+// ================================================================
+// 🎯 DÉTECTEUR MASLOW DYNAMIQUE - BASÉ SUR MOTS-CLÉS
+// ================================================================
+
+/**
+ * Détecte le comportement Maslow d'une catégorie de façon DYNAMIQUE
+ * en analysant les mots-clés au lieu d'un mapping statique
+ */
+export function getBehavior(category?: string): 'STRICT' | 'FLEXIBLE' | 'BURN_RATE' {
+  if (!category) return 'BURN_RATE';
+  
+  const normalized = category.toUpperCase().trim();
+  
+  // 🏠 STRICT - Factures fixes et prévisibles (besoins vitaux contraignants)
+  const strictKeywords = [
+    'ABRI', 'ÉNERGIE', 'ENERGIE', 'LOYER', 'CRÉDIT', 'CREDIT', 'IMMOBILIER',
+    'ÉLECTRICITÉ', 'ELECTRICITE', 'GAZ', 'EAU', 'CHARGES', 'TAXE', 'FONCIERE',
+    'ABONNEMENT', 'SERVICE', 'DETTE', 'RÉGULARISATION', 'REGULARISATION',
+    'ASSURANCE', 'IMPÔT', 'IMPOT', 'MUTUELLE',
+    'SALAIRE', 'REVENU', 'RESSOURCE', 'PRÉVOYANCE', 'PREVOYANCE',
+    'MOBILE', 'INTERNET', 'FIBRE', 'FORFAIT'
+  ];
+  
+  // 🌿 FLEXIBLE - Variables mais nécessaires (besoins vitaux flexibles)
+  const flexibleKeywords = [
+    'SANTÉ', 'SANTE', 'INTÉGRITÉ', 'INTEGRITE', 'PHARMACIE', 'MÉDECIN', 'MEDECIN',
+    'NUTRITION', 'ALIMENTATION', 'SUPERMARCHÉ', 'SUPERMARCHE', 'MARCHÉ', 'MARCHE',
+    'MOBILITÉ', 'MOBILITE', 'TRANSPORT', 'CARBURANT', 'PÉAGE', 'PEAGE',
+    'ÉQUIPEMENT', 'EQUIPEMENT', 'DOMESTIQUE', 'ÉLECTROMÉNAGER', 'ELECTROMENAGER',
+    'CONNECTIVITÉ', 'CONNECTIVITE', 'FONCTIONNEL'
+  ];
+  
+  // 🎨 BURN_RATE - Dépenses discrétionnaires (tout le reste)
+  const burnRateKeywords = [
+    'LOISIR', 'DIVERTISSEMENT', 'SHOPPING', 'ESTHÉTIQUE', 'ESTHETIQUE',
+    'SOCIAL', 'RELATION', 'RESTAURANT', 'CAFÉ', 'CAFE', 'BAR',
+    'CULTURE', 'MÉDIA', 'MEDIA', 'STREAMING', 'CINÉMA', 'CINEMA',
+    'SPORT', 'COLLECTIF', 'APPARENCE', 'ESTIME', 'CONFORT', 'TEMPS',
+    'HOBBY', 'PASSION', 'VOYAGE', 'EXCEPTIONNEL', 'FORMATION', 'SAVOIR',
+    'INVESTISSEMENT', 'ACTIF', 'PROJET', 'PERSONNEL', 'PHILANTHROPIE',
+    'TRANSMISSION', 'HÉRITAGE', 'HERITAGE'
+  ];
+  
+  // Vérifier STRICT en premier (prioritaire)
+  for (const keyword of strictKeywords) {
+    if (normalized.includes(keyword)) {
+      return 'STRICT';
+    }
+  }
+  
+  // Puis FLEXIBLE
+  for (const keyword of flexibleKeywords) {
+    if (normalized.includes(keyword)) {
+      return 'FLEXIBLE';
+    }
+  }
+  
+  // Puis BURN_RATE explicite
+  for (const keyword of burnRateKeywords) {
+    if (normalized.includes(keyword)) {
+      return 'BURN_RATE';
+    }
+  }
+  
+  // Par défaut : BURN_RATE (si aucun mot-clé ne match)
+  return 'BURN_RATE';
+}
+
 /**
  * Normalisation des libellés pour le groupement
  */
 export function normalizeDescription(desc: string): string {
   return desc
     .toUpperCase()
-    .replace(/[0-9]/g, '') // Enlever les chiffres (souvent des dates ou IDs de transaction)
+    .replace(/[0-9]/g, '')
     .replace(/\b(JANV|FEV|MARS|AVRIL|MAI|JUIN|JUIL|AOUT|SEPT|OCT|NOV|DEC)\b/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 /**
- * Calcul de la projection de fin de mois (Moteur V2)
+ * Calcul de la projection de fin de mois (Moteur V3 - MASLOW ENHANCED)
  */
 export function calculateMonthEndProjection(
   transactions: Transaction[],
@@ -79,7 +156,27 @@ export function calculateMonthEndProjection(
   const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const daysRemaining = Math.max(0, lastDayOfMonth - now.getDate());
 
-  // 1. Transactions déjà passées ce mois-ci
+  // 🔍 ÉTAPE 1 : ANALYSE DES TRANSACTIONS
+  console.group('🔍 ÉTAPE 1 : ANALYSE DES TRANSACTIONS');
+  console.log('Total transactions:', transactions.length);
+  console.log('Mois analysé:', currentMonth + 1, '/', currentYear);
+  console.log('Jours restants:', daysRemaining);
+  
+  const positiveTransactions = transactions.filter(t => t.amount > 0);
+  console.log('→ Revenus potentiels:', positiveTransactions.length);
+  
+  if (positiveTransactions.length > 0 && positiveTransactions.length <= 5) {
+    console.log('→ Exemples de REVENUS:');
+    positiveTransactions.forEach(t => {
+      const behavior = getBehavior(t.category);
+      console.log(`   • ${t.description.substring(0, 50)}`);
+      console.log(`     ${t.amount}€ | ${new Date(t.date).toLocaleDateString()}`);
+      console.log(`     Catégorie: ${t.category || 'Non catégorisé'} → Behavior: ${behavior}`);
+    });
+  }
+  console.groupEnd();
+
+  // 1. Transactions du mois en cours
   const currentMonthTxns = transactions.filter(txn => {
     const d = new Date(txn.date);
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
@@ -91,26 +188,105 @@ export function calculateMonthEndProjection(
   const sumCurrentMonth = currentMonthTxns.reduce((sum, txn) => sum + txn.amount, 0);
   const previousMonthEndBalance = safeBalance - sumCurrentMonth;
 
-  // 2. DÉTECTION DES RÉCURRENCES (Signature Temporelle)
+  // 2. DÉTECTION DES RÉCURRENCES
   const groups: { [key: string]: Transaction[] } = {};
 
   transactions.forEach(t => {
     if (t.amount === 0 || t.description.toLowerCase().includes('virement interne')) return;
     
-    const normName = normalizeDescription(t.description); 
-    const key = `${t.amount > 0 ? 'IN' : 'OUT'}-${normName}`;
+    const normName = normalizeDescription(t.description);
+    const behavior = getBehavior(t.category);
     
-    if (!groups[key]) groups[key] = [];
-    groups[key].push({
+    // Clé adaptée au comportement
+    let groupKey: string;
+    if (behavior === 'STRICT') {
+      // Pour STRICT : groupe par nom (montant peut varier légèrement)
+      groupKey = `${t.amount > 0 ? 'IN' : 'OUT'}-${normName}-STRICT`;
+    } else if (behavior === 'FLEXIBLE') {
+      // Pour FLEXIBLE : arrondit à 10€ près
+      groupKey = `${t.amount > 0 ? 'IN' : 'OUT'}-${normName}-${Math.round(Math.abs(t.amount) / 10) * 10}`;
+    } else {
+      // BURN_RATE : pas de prédiction
+      groupKey = `${t.amount > 0 ? 'IN' : 'OUT'}-${normName}-BURN`;
+    }
+    
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push({
       ...t,
       amount: typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0)
     });
   });
 
-  const allPredictions: RecurringPrediction[] = [];
+  // 🔍 ÉTAPE 2 : GROUPEMENT
+  console.group('🔍 ÉTAPE 2 : GROUPEMENT AVEC MASLOW');
+  const revenueGroups = Object.entries(groups).filter(([k]) => k.startsWith('IN-'));
+  console.log('→ Groupes de REVENUS:', revenueGroups.length);
+  
+  if (revenueGroups.length > 0) {
+    console.log('\n📊 TOP 10 GROUPES DE REVENUS:');
+    revenueGroups
+      .sort(([, a], [, b]) => b.length - a.length)
+      .slice(0, 10)
+      .forEach(([, txns], idx) => {
+        const behavior = getBehavior(txns[0].category);
+        const avgAmount = txns.reduce((s, t) => s + t.amount, 0) / txns.length;
+        console.log(`\n   ${idx + 1}. "${txns[0].description.substring(0, 40)}..."`);
+        console.log(`      → Comportement: ${behavior} (${txns[0].category || 'Non catégorisé'})`);
+        console.log(`      → Occurrences: ${txns.length}`);
+        console.log(`      → Montant moyen: ${avgAmount.toFixed(2)}€`);
+      });
+  }
+  console.groupEnd();
 
-  Object.values(groups).forEach(groupTxns => {
-    if (groupTxns.length < 2) return;
+  // 🔍 ÉTAPE 3 : ANALYSE ET FILTRAGE AVEC MASLOW
+  console.group('🔍 ÉTAPE 3 : FILTRAGE INTELLIGENT (MASLOW)');
+  
+  const allPredictions: RecurringPrediction[] = [];
+  const rejectionDetails: any[] = [];
+  let groupIndex = 0;
+
+  Object.entries(groups).forEach(([, groupTxns]) => {
+    groupIndex++;
+    const isRevenue = groupTxns[0].amount > 0;
+    const behavior = getBehavior(groupTxns[0].category);
+    
+    // Skip BURN_RATE (sauf si revenus)
+    if (behavior === 'BURN_RATE' && !isRevenue) return;
+    
+    // Log détaillé pour les revenus et STRICT
+    const shouldLog = isRevenue || behavior === 'STRICT';
+    
+    if (shouldLog) {
+      console.log(`\n${isRevenue ? '💰' : '🏠'} Groupe #${groupIndex}: "${groupTxns[0].description.substring(0, 35)}..."`);
+      console.log(`   → Behavior: ${behavior} (${groupTxns[0].category || 'Non catégorisé'})`);
+    }
+    
+    // 🎯 SEUIL ADAPTATIF SELON MASLOW
+    let minOccurrences = 2;
+    let minConfidence = 75;
+    
+    if (behavior === 'STRICT' || isRevenue) {
+      // STRICT ou Revenus : plus permissif
+      minOccurrences = 2;
+      minConfidence = 60; // Abaissé de 75% à 60%
+    } else if (behavior === 'FLEXIBLE') {
+      minOccurrences = 3;
+      minConfidence = 70;
+    }
+    
+    if (groupTxns.length < minOccurrences) {
+      if (shouldLog) {
+        console.log(`   ❌ REJETÉ: ${groupTxns.length} occurrence(s) < ${minOccurrences}`);
+      }
+      rejectionDetails.push({
+        description: groupTxns[0].description.substring(0, 40),
+        type: isRevenue ? 'REVENU' : 'DÉPENSE',
+        behavior,
+        occurrences: groupTxns.length,
+        raison: `Moins de ${minOccurrences} occurrences`,
+      });
+      return;
+    }
 
     groupTxns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -124,48 +300,158 @@ export function calculateMonthEndProjection(
     const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
     const variance = intervals.reduce((acc, val) => acc + Math.pow(val - avgInterval, 2), 0) / intervals.length;
     const stdDev = Math.sqrt(variance);
-    const regularityScore = Math.max(0, 100 - (stdDev / avgInterval * 100));
+    let regularityScore = Math.max(0, 100 - (stdDev / avgInterval * 100));
+
+    // 🎯 BOOST DE CONFIANCE SELON MASLOW
+    if (behavior === 'STRICT') {
+      regularityScore += 20; // +20% pour factures fixes
+    } else if (behavior === 'FLEXIBLE') {
+      regularityScore += 10; // +10% pour variables
+    }
+    
+    // Boost supplémentaire pour les revenus
+    if (isRevenue) {
+      regularityScore += 15; // +15% pour les revenus
+    }
 
     const daysSinceLast = (now.getTime() - new Date(groupTxns[0].date).getTime()) / (1000 * 3600 * 24);
     const recencyPenalty = daysSinceLast > (avgInterval * 1.5) ? 25 : 0;
-    const finalConfidence = Math.round(regularityScore - recencyPenalty);
+    const finalConfidence = Math.round(Math.min(100, regularityScore - recencyPenalty));
 
-    // Règle des 80% (Seulement le Top-Tier)
-    const isReliable = (groupTxns.length >= 3 && finalConfidence >= 75) || (groupTxns.length === 2 && finalConfidence >= 90);
-
-    if (isReliable) {
-      const names = groupTxns.map(t => t.description);
-      const rawDescription = names.sort((a, b) =>
-        names.filter(v => v === a).length - names.filter(v => v === b).length
-      ).pop() || groupTxns[0].description;
-
-      const avgAmount = groupTxns.reduce((sum, t) => sum + t.amount, 0) / groupTxns.length;
-      const nextDate = new Date(groupTxns[0].date);
-      nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
-      
-      allPredictions.push({
-        id: `pred-${normalizeDescription(rawDescription)}-${avgAmount.toFixed(0)}`,
-        description: normalizeDescription(rawDescription),
-        rawDescription: rawDescription,
-        amount: avgAmount,
-        type: avgAmount > 0 ? 'revenue' : 'expense',
-        occurrences: groupTxns.length,
-        transactionIds: groupTxns.map(t => t.id),
-        intervalDays: Math.round(avgInterval),
-        lastDate: groupTxns[0].date,
-        nextExpectedDate: nextDate.toISOString(),
-        confidence: finalConfidence,
-        confidenceLevel: finalConfidence >= 90 ? 'high' : (finalConfidence >= 70 ? 'medium' : 'low')
-      });
+    if (shouldLog) {
+      console.log(`   → Occurrences: ${groupTxns.length}`);
+      console.log(`   → Intervalle moyen: ${avgInterval.toFixed(1)}j`);
+      console.log(`   → Régularité de base: ${(regularityScore - (behavior === 'STRICT' ? 20 : behavior === 'FLEXIBLE' ? 10 : 0) - (isRevenue ? 15 : 0)).toFixed(1)}%`);
+      if (behavior === 'STRICT') console.log(`   → Bonus STRICT: +20%`);
+      if (behavior === 'FLEXIBLE') console.log(`   → Bonus FLEXIBLE: +10%`);
+      if (isRevenue) console.log(`   → Bonus REVENU: +15%`);
+      console.log(`   → Confiance finale: ${finalConfidence}%`);
+      console.log(`   → Seuil requis: ≥${minConfidence}%`);
     }
+
+    const isReliable = finalConfidence >= minConfidence;
+
+    if (shouldLog) {
+      console.log(`   → Résultat: ${isReliable ? '✅ ACCEPTÉ' : '❌ REJETÉ'}`);
+    }
+
+    if (!isReliable) {
+      rejectionDetails.push({
+        description: groupTxns[0].description.substring(0, 40),
+        type: isRevenue ? 'REVENU' : 'DÉPENSE',
+        behavior,
+        occurrences: groupTxns.length,
+        confiance: finalConfidence,
+        raison: `Confiance ${finalConfidence}% < ${minConfidence}%`,
+      });
+      return;
+    }
+
+    const names = groupTxns.map(t => t.description);
+    const rawDescription = names.sort((a, b) =>
+      names.filter(v => v === a).length - names.filter(v => v === b).length
+    ).pop() || groupTxns[0].description;
+
+    const avgAmount = groupTxns.reduce((sum, t) => sum + t.amount, 0) / groupTxns.length;
+    const nextDate = new Date(groupTxns[0].date);
+    nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
+    
+    if (shouldLog) {
+      console.log(`   ✅ Prochaine date prévue: ${nextDate.toLocaleDateString('fr-FR')}`);
+    }
+    
+    // 🆕 ENRICHISSEMENT COMPORTEMENTAL
+    const behavioralProfile = getCategoryBehavioralProfileCached(groupTxns[0].category);
+    
+    allPredictions.push({
+      id: `pred-${normalizeDescription(rawDescription)}-${avgAmount.toFixed(0)}`,
+      description: normalizeDescription(rawDescription),
+      rawDescription: rawDescription,
+      amount: avgAmount,
+      type: avgAmount > 0 ? 'revenue' : 'expense',
+      occurrences: groupTxns.length,
+      transactionIds: groupTxns.map(t => t.id),
+      intervalDays: Math.round(avgInterval),
+      lastDate: groupTxns[0].date,
+      nextExpectedDate: nextDate.toISOString(),
+      confidence: finalConfidence,
+      confidenceLevel: finalConfidence >= 90 ? 'high' : (finalConfidence >= 70 ? 'medium' : 'low'),
+      category: groupTxns[0].category,
+      behavior: behavior,
+      // 🆕 NOUVEAUX CHAMPS COMPORTEMENTAUX
+      behavioralAxis: behavioralProfile.axis,
+      compressibilityScore: behavioralProfile.compressibilityScore,
+      priority: behavioralProfile.priority
+    });
   });
 
-  // 3. CALCULS FINANCIERS
-  const endOfMonth = new Date(currentYear, currentMonth, lastDayOfMonth, 23, 59, 59);
-  const recurringThisMonth = allPredictions.filter(p => new Date(p.nextExpectedDate) <= endOfMonth);
+  // Résumé
+  const revenueRejections = rejectionDetails.filter(r => r.type === 'REVENU');
+  console.log(`\n📊 RÉSUMÉ:`);
+  console.log(`→ Prédictions acceptées: ${allPredictions.length}`);
+  console.log(`   • Revenus: ${allPredictions.filter(p => p.type === 'revenue').length}`);
+  console.log(`   • Dépenses: ${allPredictions.filter(p => p.type === 'expense').length}`);
+  console.log(`→ Groupes rejetés: ${rejectionDetails.length}`);
+  console.log(`   • Revenus rejetés: ${revenueRejections.length}`);
+  
+  console.groupEnd();
 
+  // 3. CALCULS FINANCIERS
+  console.group('🔍 ÉTAPE 4 : PROJECTION FINALE');
+  
+  const endOfMonth = new Date(currentYear, currentMonth, lastDayOfMonth, 23, 59, 59);
+  const recurringThisMonth = allPredictions.filter(p => {
+    const nextDate = new Date(p.nextExpectedDate);
+    return nextDate > now && nextDate <= endOfMonth;
+  });
+
+  console.log(`Prédictions ce mois: ${recurringThisMonth.length}`);
+  
   const recurringRevenue = recurringThisMonth.filter(p => p.type === 'revenue').reduce((sum, p) => sum + p.amount, 0);
   let recurringExpenses = recurringThisMonth.filter(p => p.type === 'expense').reduce((sum, p) => sum + Math.abs(p.amount), 0);
+
+  // 🆕 DÉTAIL DES RÉCURRENCES PRÉVUES CE MOIS
+  console.log('\n💰 RÉCURRENCES PRÉVUES CE MOIS - DÉTAIL COMPLET:');
+  console.log('─'.repeat(80));
+  
+  const revenuesThisMonth = recurringThisMonth.filter(p => p.type === 'revenue');
+  const expensesThisMonth = recurringThisMonth.filter(p => p.type === 'expense');
+  
+  console.log(`\n✅ REVENUS RÉCURRENTS CE MOIS (${revenuesThisMonth.length}) :`);
+  if (revenuesThisMonth.length > 0) {
+    revenuesThisMonth.forEach((p, idx) => {
+      console.log(`\n   ${idx + 1}. ${p.rawDescription.substring(0, 60)}`);
+      console.log(`      💶 Montant: +${p.amount.toFixed(2)}€`);
+      console.log(`      📅 Date prévue: ${new Date(p.nextExpectedDate).toLocaleDateString('fr-FR')}`);
+      console.log(`      📊 Confiance: ${p.confidence}%`);
+      console.log(`      🔄 Basé sur ${p.occurrences} occurrences (tous les ${p.intervalDays}j)`);
+      console.log(`      🏷️ Catégorie: ${p.category || 'Non catégorisé'}`);
+    });
+    console.log(`\n   ═══════════════════════════════════════════════════`);
+    console.log(`   💰 TOTAL REVENUS RÉCURRENTS: +${recurringRevenue.toFixed(2)}€`);
+    console.log(`   ═══════════════════════════════════════════════════`);
+  } else {
+    console.log('   (Aucun revenu récurrent prévu ce mois)');
+  }
+  
+  console.log(`\n\n❌ DÉPENSES RÉCURRENTES CE MOIS (${expensesThisMonth.length}) :`);
+  if (expensesThisMonth.length > 0) {
+    expensesThisMonth.forEach((p, idx) => {
+      console.log(`\n   ${idx + 1}. ${p.rawDescription.substring(0, 60)}`);
+      console.log(`      💶 Montant: ${p.amount.toFixed(2)}€`);
+      console.log(`      📅 Date prévue: ${new Date(p.nextExpectedDate).toLocaleDateString('fr-FR')}`);
+      console.log(`      📊 Confiance: ${p.confidence}%`);
+      console.log(`      🔄 Basé sur ${p.occurrences} occurrences (tous les ${p.intervalDays}j)`);
+      console.log(`      🏷️ Catégorie: ${p.category || 'Non catégorisé'}`);
+    });
+    console.log(`\n   ═══════════════════════════════════════════════════`);
+    console.log(`   💸 TOTAL DÉPENSES RÉCURRENTES: -${recurringExpenses.toFixed(2)}€`);
+    console.log(`   ═══════════════════════════════════════════════════`);
+  } else {
+    console.log('   (Aucune dépense récurrente prévue ce mois)');
+  }
+  
+  console.log('\n' + '─'.repeat(80));
 
   if (settings?.inflationFactor && settings.inflationFactor > 1) {
     recurringExpenses *= settings.inflationFactor;
@@ -178,6 +464,16 @@ export function calculateMonthEndProjection(
   const totalExpenses = completedExpenses + recurringExpenses;
   const projectedBalance = previousMonthEndBalance + totalRevenue - totalExpenses;
 
+  console.log('\n📈 FORMULE:');
+  console.log(`Solde fin mois dernier: ${previousMonthEndBalance.toFixed(2)}€`);
+  console.log(`+ Revenus complétés: ${completedRevenue.toFixed(2)}€`);
+  console.log(`+ Revenus récurrents: ${recurringRevenue.toFixed(2)}€`);
+  console.log(`- Dépenses complétées: ${completedExpenses.toFixed(2)}€`);
+  console.log(`- Dépenses récurrentes: ${recurringExpenses.toFixed(2)}€`);
+  console.log(`\n🎯 PROJECTION: ${projectedBalance.toFixed(2)}€`);
+  
+  console.groupEnd();
+
   return {
     projectedBalance,
     currentBalance: safeBalance,
@@ -185,7 +481,7 @@ export function calculateMonthEndProjection(
     expectedExpenses: totalExpenses,
     daysRemaining,
     confidence: Math.min(100, Math.round((completedExpenses / (totalExpenses || 1)) * 100)),
-    trend: projectedBalance > safeBalance ? 'improving' : 'declining',
+    trend: projectedBalance > previousMonthEndBalance ? 'improving' : 'declining',
     risks: projectedBalance < 0 ? ['Risque de découvert en fin de mois'] : [],
     details: {
       previousMonthEndBalance,
@@ -200,95 +496,15 @@ export function calculateMonthEndProjection(
   };
 }
 
-// Nettoyage des fonctions inutilisées demandées par le compilateur
+// Fonctions utilitaires
 export function isSimilarDescription(d1: string, d2: string): boolean {
   const n1 = normalizeDescription(d1);
   const n2 = normalizeDescription(d2);
   
-  // Si l'un contient l'autre, c'est un match (rapide)
   if (n1.includes(n2) || n2.includes(n1)) return true;
   
-  // Sinon, score de similarité floue (Levenshtein)
   return calculateStringSimilarity(n1, n2) > 0.85; 
 }
-
-/**
-
- * Détection avancée des récurrences prédites (basé sur weeks over 6 months, proba >=80%)
-/**
- * Détection avancée des récurrences prédites (basée sur occurrences hebdomadaires sur 6 mois, proba >=80%)
- */
-function detectRecurringPredictions(
-  transactions: Transaction[],
-  now: Date,
-  endOfMonth: Date,
-  settings: ProjectionSettings
-): RecurringPrediction[] {
-  const predictions: RecurringPrediction[] = [];
-
-  const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000); // 6 mois back
-  const recentTxns = transactions.filter(t => new Date(t.date) >= sixMonthsAgo);
-
-  // Group by normalized desc + similar amount
-  const groups = recentTxns.reduce((acc, txn) => {
-    const normDesc = normalizeDescription(txn.description);
-    const key = `${normDesc}_${Math.round(txn.amount / 10) * 10}`; // Group by desc + montant rounded to 10
-    if (!acc.has(key)) acc.set(key, []);
-    acc.get(key)!.push(txn);
-    return acc;
-  }, new Map<string, Transaction[]>());
-
-  groups.forEach((groupTxns, key) => {
-    if (groupTxns.length < 3) return; // Min occurrences
-
-    // Weekly analysis
-    const weeks = new Set<string>();
-    groupTxns.forEach(t => {
-      const date = new Date(t.date);
-      const weekKey = `${date.getFullYear()}-${Math.floor(date.getDate() / 7)}`;
-      weeks.add(weekKey);
-    });
-
-    const totalPossibleWeeks = 24; // 6 months ~24 weeks
-    const occurrenceRate = (weeks.size / totalPossibleWeeks) * 100;
-
-    if (occurrenceRate < 80) return; // Proba >=80%
-
-    // Calculate avg interval, amount, etc.
-    const sorted = groupTxns.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const intervals = [];
-    for (let i = 1; i < sorted.length; i++) {
-      intervals.push((new Date(sorted[i].date).getTime() - new Date(sorted[i - 1].date).getTime()) / (86400000));
-    }
-    const avgInterval = intervals.length > 0 ? intervals.reduce((a, b) => a + b, 0) / intervals.length : 0;
-    const avgAmount = groupTxns.reduce((sum, t) => sum + t.amount, 0) / groupTxns.length;
-
-    const lastDate = new Date(sorted[sorted.length - 1].date);
-    let nextExpected = new Date(lastDate);
-    nextExpected.setDate(nextExpected.getDate() + avgInterval);
-
-    if (nextExpected > now && nextExpected <= endOfMonth) {
-      predictions.push({
-        id: key,
-        description: key.split('_')[0],
-        rawDescription: groupTxns[0].description,
-        amount: avgAmount,
-        type: avgAmount > 0 ? 'revenue' : 'expense',
-        occurrences: groupTxns.length,
-        transactionIds: groupTxns.map(t => t.id),
-        intervalDays: Math.round(avgInterval),
-        lastDate: sorted[sorted.length - 1].date,
-        nextExpectedDate: nextExpected.toISOString(),
-        confidence: Math.round(occurrenceRate),
-        confidenceLevel: occurrenceRate >= 95 ? 'high' : occurrenceRate >= 85 ? 'medium' : 'low',
-      });
-    }
-  });
-
-  return predictions;
-}
-
-// ... Garder les autres fonctions auxiliaires (calculateConfidence, determineTrend, etc.) identiques à ta version précédente
 
 function calculateStringSimilarity(str1: string, str2: string): number {
   const s1 = str1.toLowerCase().trim();
@@ -319,58 +535,11 @@ function calculateStringSimilarity(str1: string, str2: string): number {
   return 1 - distance / Math.max(s1.length, s2.length);
 }
 
-function calculateDailyExpenseTrend(currentMonthTxns: Transaction[], now: Date): number {
-  const dayOfMonth = now.getDate();
-  if (dayOfMonth === 0) return 0;
-
-  const totalExpenses = currentMonthTxns
-    .filter(txn => txn.amount < 0 && new Date(txn.date) <= now)
-    .reduce((sum, txn) => sum + Math.abs(txn.amount), 0);
-
-  return totalExpenses / dayOfMonth;
-}
-
 export function calculateVariance(values: number[]): number {
   if (values.length === 0) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
   return Math.sqrt(squaredDiffs.reduce((a, b) => a + b, 0) / values.length);
-}
-
-function calculateConfidence(
-  allTransactions: Transaction[],
-  currentMonthTxns: Transaction[],
-  recurringAmount: number,
-  daysRemaining: number
-): number {
-  if (allTransactions.length === 0 && currentMonthTxns.length === 0) return 0;
-
-  let confidence = 50;
-  if (allTransactions.length > 100) confidence += 20;
-  else if (allTransactions.length > 50) confidence += 10;
-
-  if (currentMonthTxns.length > 20) confidence += 15;
-  else if (currentMonthTxns.length > 10) confidence += 10;
-
-  if (recurringAmount > 0) confidence += 15;
-
-  if (daysRemaining > 15) confidence -= 10;
-  else if (daysRemaining < 5) confidence += 10;
-
-  return Math.min(100, Math.max(0, confidence));
-}
-
-function determineTrend(
-  projectedBalance: number,
-  currentBalance: number,
-  expectedExpenses: number
-): 'improving' | 'stable' | 'declining' {
-  const difference = projectedBalance - currentBalance;
-  const percentChange = currentBalance !== 0 ? (difference / Math.abs(currentBalance)) * 100 : 0;
-
-  if (percentChange > 5) return 'improving';
-  if (percentChange < -5) return 'declining';
-  return 'stable';
 }
 
 export function identifyRisks(

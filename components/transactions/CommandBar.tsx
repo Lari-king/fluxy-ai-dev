@@ -36,6 +36,7 @@ export interface FilterState {
   dateFrom: string;
   dateTo: string;
   recurring: string;
+  splitStatus?: 'all' | 'split' | 'not_split'; // 🆕 Filtre pour opérations divisées
 }
 
 interface CommandBarProps {
@@ -138,7 +139,7 @@ const ModernSelect = React.memo(function ModernSelect({
                 <button
                   key={opt.id}
                   onClick={() => {
-                    onChange(opt.name || opt.id);
+                    onChange(opt.name); // 🔧 FIX : Passer le NAME pour compatibilité avec les transactions
                     setIsOpen(false);
                   }}
                   className="w-full text-left px-4 py-3 text-sm text-white/70 hover:bg-white/10 hover:text-white transition-all flex items-center justify-between border-b border-white/5 last:border-none group"
@@ -401,7 +402,7 @@ export function CommandBarNew({
                 
                 <div className="flex items-center gap-2">
                   
-                  {/* CATÉGORIE PRINCIPALE */}
+                  {/* CATÉGORIE PRINCIPALE - CORRIGÉ : Utilise c.id */}
                   <div className="relative group/cat">
                     <motion.button 
                       whileHover={{ scale: 1.1 }}
@@ -438,13 +439,13 @@ export function CommandBarNew({
                     </div>
                   </div>
 
-                  {/* SOUS-CATÉGORIE */}
+                  {/* SOUS-CATÉGORIE - CORRIGÉ : Utilise child.id */}
                   <div className="relative group/sub">
                     <motion.button 
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                       className="p-2.5 hover:bg-purple-500/30 rounded-lg text-purple-400 transition-all backdrop-blur-xl border border-purple-500/20" 
-                      title="Sous-catégorie (héritage automatique)"
+                      title="Sous-catégorie"
                     >
                       <Tags className="w-5 h-5" />
                     </motion.button>
@@ -452,7 +453,7 @@ export function CommandBarNew({
                       <div className="px-4 py-2 border-b border-white/10">
                         <div className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
                           <Sparkles className="w-3 h-3" />
-                          Sous-catégorie (héritage auto)
+                          Sous-catégorie
                         </div>
                       </div>
                       {categoryTree.parents.map(parent => {
@@ -470,7 +471,7 @@ export function CommandBarNew({
                             {children.map(child => (
                               <button 
                                 key={child.id} 
-                                onClick={() => onBulkCategorizeSubCategory?.(child.name)} 
+                                onClick={() => onBulkCategorizeSubCategory?.(child.id)} 
                                 className="w-full text-left pl-8 pr-4 py-3 text-sm text-white/70 hover:bg-purple-500/20 hover:text-white transition-all flex items-center justify-between group/item"
                               >
                                 <div className="flex items-center gap-2 flex-1">
@@ -479,18 +480,13 @@ export function CommandBarNew({
                                   <span className="text-[10px] text-white/30">→ {parent.name}</span>
                                 </div>
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/40 ml-2">
-                                  {transactionCounts[`${parent.name}__${child.name}`] || 0}
+                                  {transactionCounts[child.id] || 0}
                                 </span>
                               </button>
                             ))}
                           </div>
                         );
                       })}
-                      {Object.values(categoryTree.children).every(arr => arr.length === 0) && (
-                        <div className="px-4 py-8 text-sm text-white/40 text-center">
-                          Aucune sous-catégorie disponible
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -706,6 +702,19 @@ export function CommandBarNew({
                   variant="secondary"
                 />
 
+                {/* 🆕 FILTRE OPÉRATIONS DIVISÉES */}
+                <ModernSelect 
+                  label="Opérations divisées"
+                  icon={TrendingUp}
+                  value={filters.splitStatus || 'all'}
+                  options={[
+                    { id: 'all', name: 'Toutes', emoji: '📊' },
+                    { id: 'split', name: 'Divisées uniquement', emoji: '🔀' },
+                    { id: 'not_split', name: 'Non divisées', emoji: '📝' }
+                  ]}
+                  onChange={(val) => onFilterChange({...filters, splitStatus: val as 'all' | 'split' | 'not_split'})}
+                />
+
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-[10px] font-bold text-white/40 uppercase tracking-wider">
                     <DollarSign className="w-3 h-3" />
@@ -749,14 +758,6 @@ export function CommandBarNew({
                     />
                   </div>
                 </div>
-
-                <ModernSelect 
-                  label="Personne"
-                  icon={User}
-                  value={filters.person}
-                  options={peopleOptions}
-                  onChange={(val) => onFilterChange({...filters, person: val})}
-                />
               </div>
 
               <div className="flex justify-end gap-3 mt-6">
