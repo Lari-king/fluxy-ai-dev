@@ -6,6 +6,10 @@
  * - Plus d'informations
  * - Spacing aéré
  * - Visuels améliorés
+ * 
+ * ⚡ OPTIMISATIONS PERFORMANCE :
+ * - Debounce sur le calcul d'impact (500ms)
+ * - Affichage des exemples récents
  */
 
 import { useMemo } from 'react';
@@ -24,7 +28,8 @@ import {
 import { Rule } from '../../types/rules';
 import { useData } from '../../contexts/DataContext';
 import { formatCurrency } from '../../src/utils/format';
-import { countMatchingTransactions, sumMatchingTransactions } from '../../src/utils/ruleEngine';
+import { countMatchingTransactions, sumMatchingTransactions, evaluateRule } from '../../src/utils/ruleEngine';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 
 interface RulesRightPanelProps {
   rule: Rule | null;
@@ -35,18 +40,35 @@ export function RulesRightPanel({ rule, isCreating }: RulesRightPanelProps) {
   
   const { transactions } = useData();
 
-  const impact = useMemo(() => {
-    if (!rule) return { count: 0, amount: 0, percentage: 0 };
+  // ⚡ OPTIMISATION : On attend 500ms que l'utilisateur arrête de modifier la règle
+  // avant de lancer le calcul lourd sur tout l'historique.
+  const debouncedRule = useDebouncedValue(rule, 500);
 
-    const matchingCount = countMatchingTransactions(rule, transactions);
-    const totalAmount = sumMatchingTransactions(rule, transactions);
+  const impact = useMemo(() => {
+    // On utilise debouncedRule ici, pas rule
+    if (!debouncedRule) return { count: 0, amount: 0, percentage: 0 };
+
+    console.time("Impact Calculation"); // Pour debug la perf
+    const matchingCount = countMatchingTransactions(debouncedRule, transactions);
+    const totalAmount = sumMatchingTransactions(debouncedRule, transactions);
+    console.timeEnd("Impact Calculation");
 
     return {
       count: matchingCount,
       amount: totalAmount,
       percentage: transactions.length > 0 ? (matchingCount / transactions.length) * 100 : 0,
     };
-  }, [rule, transactions]);
+  }, [debouncedRule, transactions]); // Dépendances stables
+
+  // 🆕 INNOVATION : Afficher les dernières transactions impactées
+  const recentMatches = useMemo(() => {
+    if (!debouncedRule || impact.count === 0) return [];
+    // Récupérer les 3 dernières pour montrer à l'utilisateur de quoi on parle
+    return transactions
+      .filter(t => evaluateRule(debouncedRule, t).matches)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 3);
+  }, [debouncedRule, transactions, impact.count]);
 
   if (!rule) {
     return (
@@ -257,6 +279,43 @@ export function RulesRightPanel({ rule, isCreating }: RulesRightPanelProps) {
                   Aucune action automatique configurée
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+
+        {/* 🆕 EXEMPLES RÉCENTS */}
+        {recentMatches.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-wider text-white/40 px-1">
+              Exemples détectés
+            </h3>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="space-y-2"
+            >
+              {recentMatches.map(t => (
+                <div key={t.id} className="bg-white/5 border border-white/10 rounded-lg p-3 hover:bg-white/10 transition-colors">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white/90 truncate font-medium">{t.description}</div>
+                      <div className="text-xs text-white/40 mt-1">
+                        {new Date(t.date).toLocaleDateString('fr-FR', { 
+                          day: 'numeric', 
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </div>
+                    </div>
+                    <span className={`text-sm font-medium flex-shrink-0 ${
+                      t.amount < 0 ? 'text-red-400' : 'text-green-400'
+                    }`}>
+                      {formatCurrency(t.amount)}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </motion.div>
           </div>
         )}

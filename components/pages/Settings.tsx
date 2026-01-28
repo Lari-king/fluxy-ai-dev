@@ -22,6 +22,7 @@ import {
   AlertTriangle, 
   FolderTree, 
   Database,
+  Cloud,
   ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,6 +31,7 @@ import { TransactionSettingsTab } from '../settings/TransactionSettingsTab';
 import { RulesSettingsTab } from '../settings/RulesSettingsTab';
 import { CategoriesManagementTab } from '../settings/CategoriesManagementTab';
 import { DataManagementTab } from '../settings/DataManagementTab';
+import { StorageSettingsTab } from '../settings/StorageSettingsTab';
 
 interface Invitation {
   id: string;
@@ -43,6 +45,7 @@ interface Invitation {
 const TABS = [
   { id: 'invitations', label: 'Invitations', icon: Users },
   { id: 'preferences', label: 'Préférences', icon: SettingsIcon },
+  { id: 'storage', label: 'Stockage', icon: Cloud },
   { id: 'transactions', label: 'Transactions', icon: Receipt },
   { id: 'categories', label: 'Catégories', icon: FolderTree },
   { id: 'rules', label: 'Règles', icon: AlertTriangle },
@@ -388,6 +391,9 @@ export function Settings() {
                 </div>
               </div>
             )}
+
+            {/* STORAGE TAB */}
+            {activeTab === 'storage' && <StorageSettingsTab />}
 
             {/* TRANSACTIONS TAB */}
             {activeTab === 'transactions' && <TransactionSettingsTab />}

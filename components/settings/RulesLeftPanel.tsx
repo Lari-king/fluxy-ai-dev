@@ -6,9 +6,13 @@
  * - Boutons d'action DIRECTS au hover (pas de dropdown)
  * - Scroll fluide optimisé
  * - Spacing aéré
+ * 
+ * ⚡ OPTIMISATIONS PERFORMANCE :
+ * - Mémoisation des items de liste (React.memo)
+ * - Évite les re-renders inutiles
  */
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, memo } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Target, 
@@ -44,6 +48,118 @@ interface RulesLeftPanelProps {
   onToggleRule: (ruleId: string, enabled: boolean) => void;
   onDeleteRule?: (ruleId: string) => void;
 }
+
+// ⚡ OPTIMISATION : Composant Item mémorisé pour éviter les re-renders inutiles
+const RuleItem = memo(({ 
+  rule, 
+  index,
+  isSelected, 
+  typeConfig, 
+  onSelect, 
+  onToggle, 
+  onDelete 
+}: { 
+  rule: Rule; 
+  index: number;
+  isSelected: boolean; 
+  typeConfig: { icon: any; label: string }; 
+  onSelect: (ruleId: string) => void; 
+  onToggle: (e: React.MouseEvent, ruleId: string, enabled: boolean) => void; 
+  onDelete: (e: React.MouseEvent, ruleId: string, ruleName: string) => void;
+}) => {
+  const Icon = typeConfig.icon;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.03 }}
+      onClick={() => onSelect(rule.id)}
+      className={`relative group cursor-pointer bg-white/5 border rounded-xl p-4 transition-all ${
+        isSelected 
+          ? 'border-cyan-500/50 bg-cyan-500/10 shadow-xl shadow-cyan-500/20' 
+          : 'border-white/10 hover:border-white/20 hover:bg-white/10'
+      }`}
+    >
+      {/* Header avec nom et toggle */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1 min-w-0 pr-3">
+          <h4 className="text-sm font-medium text-white/90 truncate mb-1">
+            {rule.name}
+          </h4>
+          {rule.description && (
+            <p className="text-xs text-white/40 line-clamp-2 leading-relaxed">
+              {rule.description}
+            </p>
+          )}
+        </div>
+        
+        {/* Toggle Switch */}
+        <button
+          onClick={(e) => onToggle(e, rule.id, !rule.enabled)}
+          className={`flex-shrink-0 p-2 rounded-lg transition-all ${
+            rule.enabled 
+              ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' 
+              : 'bg-white/5 text-white/40 hover:bg-white/10'
+          }`}
+          title={rule.enabled ? 'Désactiver' : 'Activer'}
+        >
+          {rule.enabled ? (
+            <Power className="w-4 h-4" />
+          ) : (
+            <PowerOff className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+
+      {/* Type + Sévérité */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+          <Icon className="w-3.5 h-3.5" />
+          <span>{typeConfig.label}</span>
+        </div>
+
+        <div className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
+          rule.severity === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+          rule.severity === 'warning' ? 'bg-orange-500/10 text-orange-400 border-orange-500/30' :
+          'bg-blue-500/10 text-blue-400 border-blue-500/30'
+        }`}>
+          {rule.severity === 'error' && '🔴'}
+          {rule.severity === 'warning' && '⚠️'}
+          {rule.severity === 'info' && '🔵'}
+          <span className="ml-1 capitalize">{rule.severity}</span>
+        </div>
+      </div>
+
+      {/* Actions directes au hover - BOUTONS VISIBLES */}
+      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={(e) => onDelete(e, rule.id, rule.name)}
+          className="flex items-center justify-center gap-2 px-3 py-2 bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/30 rounded-lg text-xs text-white/60 hover:text-red-400 transition-all"
+          title="Supprimer"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>Supprimer</span>
+        </button>
+      </div>
+
+      {/* Indicateur de sélection */}
+      {isSelected && (
+        <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-500/50" />
+      )}
+    </motion.div>
+  );
+}, (prev, next) => {
+  // ⚡ Custom comparison pour éviter les re-renders inutiles
+  return (
+    prev.rule.id === next.rule.id &&
+    prev.rule.enabled === next.rule.enabled &&
+    prev.rule.name === next.rule.name &&
+    prev.isSelected === next.isSelected
+  );
+});
+
+RuleItem.displayName = 'RuleItem';
 
 export function RulesLeftPanel({
   rules,
@@ -134,95 +250,19 @@ export function RulesLeftPanel({
               </button>
             </div>
           ) : (
-            rules.map((rule, index) => {
-              const typeConfig = RULE_TYPE_CONFIG[rule.type];
-              const Icon = typeConfig.icon;
-              const isSelected = rule.id === selectedRuleId;
-
-              return (
-                <motion.div
-                  key={rule.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  onClick={() => onSelectRule(rule.id)}
-                  className={`relative group cursor-pointer bg-white/5 border rounded-xl p-4 transition-all ${
-                    isSelected 
-                      ? 'border-cyan-500/50 bg-cyan-500/10 shadow-xl shadow-cyan-500/20' 
-                      : 'border-white/10 hover:border-white/20 hover:bg-white/10'
-                  }`}
-                >
-                  {/* Header avec nom et toggle */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0 pr-3">
-                      <h4 className="text-sm font-medium text-white/90 truncate mb-1">
-                        {rule.name}
-                      </h4>
-                      {rule.description && (
-                        <p className="text-xs text-white/40 line-clamp-2 leading-relaxed">
-                          {rule.description}
-                        </p>
-                      )}
-                    </div>
-                    
-                    {/* Toggle Switch */}
-                    <button
-                      onClick={(e) => handleToggle(e, rule.id, !rule.enabled)}
-                      className={`flex-shrink-0 p-2 rounded-lg transition-all ${
-                        rule.enabled 
-                          ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' 
-                          : 'bg-white/5 text-white/40 hover:bg-white/10'
-                      }`}
-                      title={rule.enabled ? 'Désactiver' : 'Activer'}
-                    >
-                      {rule.enabled ? (
-                        <Power className="w-4 h-4" />
-                      ) : (
-                        <PowerOff className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Type + Sévérité */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{typeConfig.label}</span>
-                    </div>
-
-                    <div className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                      rule.severity === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
-                      rule.severity === 'warning' ? 'bg-orange-500/10 text-orange-400 border-orange-500/30' :
-                      'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                    }`}>
-                      {rule.severity === 'error' && '🔴'}
-                      {rule.severity === 'warning' && '⚠️'}
-                      {rule.severity === 'info' && '🔵'}
-                      <span className="ml-1 capitalize">{rule.severity}</span>
-                    </div>
-                  </div>
-
-                  {/* Actions directes au hover - BOUTONS VISIBLES */}
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {onDeleteRule && (
-                      <button
-                        onClick={(e) => handleDelete(e, rule.id, rule.name)}
-                        className="flex items-center justify-center gap-2 px-3 py-2 bg-white/5 hover:bg-red-500/20 border border-white/10 hover:border-red-500/30 rounded-lg text-xs text-white/60 hover:text-red-400 transition-all"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Supprimer</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Indicateur de sélection */}
-                  {isSelected && (
-                    <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-500/50" />
-                  )}
-                </motion.div>
-              );
-            })
+            // ⚡ Utilisation du composant mémorisé pour éviter les re-renders inutiles
+            rules.map((rule, index) => (
+              <RuleItem
+                key={rule.id}
+                rule={rule}
+                index={index}
+                isSelected={rule.id === selectedRuleId}
+                typeConfig={RULE_TYPE_CONFIG[rule.type]}
+                onSelect={onSelectRule}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+              />
+            ))
           )}
         </div>
       </div>

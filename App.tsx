@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DataProvider } from './contexts/DataContext';
+import { StorageProvider } from './contexts/StorageContext';
 import { TransactionSettingsProvider } from './contexts/TransactionSettingsContext';
 import { RulesProvider } from './contexts/RulesContext';
+import { HomePage } from './components/pages/HomePage';
 import { LoginPage } from './components/auth/LoginPage';
 import { AppLayout } from './components/layout/AppLayout';
 import { Dashboard } from './components/pages/Dashboard';
@@ -24,7 +26,7 @@ import './src/utils/insights/console-helpers';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState<'home' | 'login' | string>('home');
   const [isNavOpen, setIsNavOpen] = useState(false);
 
   if (loading) {
@@ -42,10 +44,16 @@ function AppContent() {
     );
   }
 
+  // ✅ Si pas connecté
   if (!user) {
-    return <LoginPage />;
+    if (currentPage === 'login') {
+      return <LoginPage />;
+    }
+    // Afficher la HomePage par défaut
+    return <HomePage onGetStarted={() => setCurrentPage('login')} />;
   }
 
+  // ✅ Si connecté, afficher l'app
   // Render page content based on currentPage
   let PageComponent;
   switch (currentPage) {
@@ -80,6 +88,7 @@ function AppContent() {
       PageComponent = <Settings />;
       break;
     default:
+      // Par défaut, aller au dashboard
       PageComponent = <Dashboard onNavigate={setCurrentPage} />;
   }
 
@@ -100,12 +109,14 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <DataProvider>
-          <TransactionSettingsProvider>
-            <RulesProvider>
-              <AppContent />
-              <Toaster />
-            </RulesProvider>
-          </TransactionSettingsProvider>
+          <StorageProvider>
+            <TransactionSettingsProvider>
+              <RulesProvider>
+                <AppContent />
+                <Toaster />
+              </RulesProvider>
+            </TransactionSettingsProvider>
+          </StorageProvider>
         </DataProvider>
       </AuthProvider>
     </ThemeProvider>

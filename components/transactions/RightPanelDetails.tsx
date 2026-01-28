@@ -9,7 +9,7 @@
  * - Section "Règles détectées" intelligente
  */
 
-import React, { useMemo, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -42,6 +42,92 @@ import { Transaction } from '../../contexts/DataContext';
 import { useRules } from '../../contexts/RulesContext';
 import { evaluateRule } from '../../src/utils/ruleEngine';
 import { formatCurrency } from '../../src/utils/format';
+import { Rule } from '../../types/rules';
+
+/**
+ * 🧠 INTELLIGENCE : Analyse contextuelle des règles
+ * Calcule le contexte d'une règle par rapport à l'historique des transactions
+ */
+const getRuleContext = (rule: Rule, transaction: Transaction, allTransactions: Transaction[]) => {
+  if (!allTransactions || allTransactions.length === 0) return null;
+
+  // Filtrer les transactions pertinentes pour cette règle
+  const relevantTransactions = allTransactions.filter(t => {
+    if (rule.type === 'category_budget' && t.category === rule.conditions.category) return true;
+    if ((rule.type === 'merchant_frequency' || rule.type === 'merchant_amount') && 
+        rule.conditions.merchantName && 
+        t.description === rule.conditions.merchantName) return true;
+    return false;
+  });
+
+  // 🏷️ BUDGET PAR CATÉGORIE
+  if (rule.type === 'category_budget') {
+    const period = rule.conditions.period || 'monthly';
+    const txDate = new Date(transaction.date);
+    
+    // Filtrer par période (mois courant de la transaction affichée)
+    const periodTransactions = relevantTransactions.filter(t => {
+      const d = new Date(t.date);
+      if (period === 'daily') {
+        return d.toDateString() === txDate.toDateString();
+      } else if (period === 'weekly') {
+        const weekStart = new Date(txDate);
+        weekStart.setDate(txDate.getDate() - txDate.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 7);
+        return d >= weekStart && d < weekEnd;
+      } else if (period === 'monthly') {
+        return d.getMonth() === txDate.getMonth() && d.getFullYear() === txDate.getFullYear();
+      } else if (period === 'yearly') {
+        return d.getFullYear() === txDate.getFullYear();
+      }
+      return false;
+    });
+    
+    const totalSpent = periodTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const limit = rule.conditions.maxAmount || 0;
+    
+    return {
+      type: 'budget',
+      total: totalSpent,
+      limit: limit,
+      overage: totalSpent - limit,
+      percentage: limit > 0 ? (totalSpent / limit) * 100 : 0,
+      transactionCount: periodTransactions.length
+    };
+  }
+
+  // 🛒 FRÉQUENCE MARCHAND
+  if (rule.type === 'merchant_frequency') {
+    const period = rule.conditions.frequencyPeriod || 'monthly';
+    const txDate = new Date(transaction.date);
+    
+    const periodTransactions = relevantTransactions.filter(t => {
+      const d = new Date(t.date);
+      if (period === 'daily') return d.toDateString() === txDate.toDateString();
+      if (period === 'weekly') {
+        const weekStart = new Date(txDate);
+        weekStart.setDate(txDate.getDate() - txDate.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 7);
+        return d >= weekStart && d < weekEnd;
+      }
+      if (period === 'monthly') {
+        return d.getMonth() === txDate.getMonth() && d.getFullYear() === txDate.getFullYear();
+      }
+      return false;
+    });
+    
+    return {
+      type: 'frequency',
+      count: periodTransactions.length,
+      limit: rule.conditions.maxFrequency || 0,
+      overage: periodTransactions.length - (rule.conditions.maxFrequency || 0)
+    };
+  }
+
+  return null;
+};
 
 interface RightPanelDetailsProps {
   transaction: Transaction | null;
@@ -55,6 +141,7 @@ interface RightPanelDetailsProps {
   onToggleHidden?: (id: string, currentHiddenState: boolean) => void; // 🆕 Callback pour masquer/afficher
   categories?: Array<{ name: string; color?: string; icon?: string; emoji?: string }>;
   people?: Array<{ id: string; name: string; avatar?: string; color?: string }>;
+  allTransactions?: Transaction[]; // 🆕 Liste complète des transactions pour vérifier l'existence des enfants
 }
 
 export function RightPanelDetails({ 
@@ -68,7 +155,8 @@ export function RightPanelDetails({
   onNavigateToChildren, // 🆕
   onToggleHidden, // 🆕
   categories = [],
-  people = []
+  people = [],
+  allTransactions = []
 }: RightPanelDetailsProps) {
   
   // --- HOOKS ---
@@ -90,18 +178,40 @@ export function RightPanelDetails({
     [transaction?.amount]
   );
 
-  // 🆕 Vérifier si la transaction a des sous-transactions
-  const hasChildTransactions = useMemo(() => 
-    !!(transaction as any)?.childTransactionIds && (transaction as any).childTransactionIds.length > 0,
-    [transaction]
-  );
+  // 🆕 Vérifier si la transaction a des sous-transactions QUI EXISTENT VRAIMENT
+  const hasChildTransactions = useMemo(() => {
+    if (!(transaction as any)?.childTransactionIds || (transaction as any).childTransactionIds.length === 0) {
+      return false;
+    }
+    
+    // Vérifier que les enfants existent réellement dans allTransactions
+    if (allTransactions.length > 0) {
+      const childIds = (transaction as any).childTransactionIds as string[];
+      const existingChildren = childIds.filter(childId => 
+        allTransactions.some(t => t.id === childId)
+      );
+      return existingChildren.length > 0;
+    }
+    
+    // Si allTransactions n'est pas fourni, faire confiance à childTransactionIds
+    return true;
+  }, [transaction, allTransactions]);
 
-  const childCount = useMemo(() => 
-    (transaction as any)?.childTransactionIds?.length || 0,
-    [transaction]
-  );
+  const childCount = useMemo(() => {
+    if (!(transaction as any)?.childTransactionIds) return 0;
+    
+    // Compter seulement les enfants qui existent réellement
+    if (allTransactions.length > 0) {
+      const childIds = (transaction as any).childTransactionIds as string[];
+      return childIds.filter(childId => 
+        allTransactions.some(t => t.id === childId)
+      ).length;
+    }
+    
+    return (transaction as any).childTransactionIds.length;
+  }, [transaction, allTransactions]);
 
-  // Évaluer quelles règles matchent cette transaction
+  // 🧠 OPTIMISATION : Évaluer quelles règles matchent + calculer le contexte intelligent
   const matchedRules = useMemo(() => {
     if (!transaction) return [];
 
@@ -109,10 +219,14 @@ export function RightPanelDetails({
       .filter(rule => rule.enabled)
       .map(rule => {
         const result = evaluateRule(rule, transaction);
-        return result.matches ? { rule, reason: result.reason } : null;
+        if (!result.matches) return null;
+        
+        // 🆕 NOUVEAU : Calculer le contexte intelligent
+        const context = getRuleContext(rule, transaction, allTransactions);
+        return { rule, reason: result.reason, context };
       })
-      .filter(Boolean) as Array<{ rule: any; reason?: string }>;
-  }, [transaction, rules]);
+      .filter(Boolean) as Array<{ rule: any; reason?: string; context: any }>;
+  }, [transaction, rules, allTransactions]);
 
   const formattedAmount = useMemo(() => {
     if (!transaction) return '';
@@ -225,8 +339,77 @@ export function RightPanelDetails({
         {/* BODY */}
         <div className="p-4 space-y-3">
           
+          {/* 🆕 SECTION AUDIT (si transaction orpheline avec historique) */}
+          {(transaction as any).auditInfo?.wasChildOf && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-red-300 font-medium mb-1 flex items-center gap-1">
+                    <ShieldAlert className="w-3 h-3" />
+                    Audit - Opération d'origine supprimée
+                  </p>
+                  <p className="text-sm text-white/70">
+                    Cette sous-opération était liée à une transaction qui a été supprimée
+                  </p>
+                </div>
+              </div>
+
+              {/* Détails de la transaction supprimée */}
+              <div className="bg-black/20 border border-red-500/20 rounded-lg p-3 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-white/40">Libellé d'origine</span>
+                  <span className="text-white/80 font-medium">
+                    {(transaction as any).auditInfo.wasChildOf.description}
+                  </span>
+                </div>
+                <div className="h-px bg-white/5" />
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-white/40">Montant d'origine</span>
+                  <span className="text-white/80 font-medium">
+                    {formatCurrency((transaction as any).auditInfo.wasChildOf.amount)}
+                  </span>
+                </div>
+                <div className="h-px bg-white/5" />
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-white/40">Date d'origine</span>
+                  <span className="text-white/80 font-medium">
+                    {new Date((transaction as any).auditInfo.wasChildOf.date).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </span>
+                </div>
+                <div className="h-px bg-white/5" />
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-white/40">Supprimée le</span>
+                  <span className="text-red-400 font-medium">
+                    {new Date((transaction as any).auditInfo.wasChildOf.deletedAt).toLocaleDateString('fr-FR', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Note explicative */}
+              <div className="mt-3 p-2 rounded-lg bg-red-900/10 border border-red-500/20">
+                <p className="text-xs text-red-200/80">
+                  <span className="font-medium">Note :</span> Cette sous-opération est désormais indépendante. 
+                  L'historique de l'opération d'origine est conservé à titre informatif.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* 🆕 LIEN VERS TRANSACTION PARENTE (si sous-transaction) */}
-          {(transaction as any).parentTransactionId && (
+          {(transaction as any).parentTransactionId && !(transaction as any).auditInfo && (
             <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center flex-shrink-0">
@@ -434,7 +617,7 @@ export function RightPanelDetails({
                 Règles détectées ({matchedRules.length})
               </div>
 
-              {matchedRules.map(({ rule, reason }) => (
+              {matchedRules.map(({ rule, reason, context }) => (
                 <motion.div
                   key={rule.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -478,6 +661,48 @@ export function RightPanelDetails({
                       )}
                     </div>
                   </div>
+
+                  {/* 🆕 AFFICHAGE CONTEXTUEL INTELLIGENT */}
+                  {context && context.type === 'budget' && (
+                    <div className="mt-3 mb-2 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white/60">
+                          Budget utilisé ({formatCurrency(context.total)})
+                        </span>
+                        <span className={context.overage > 0 ? "text-red-400 font-bold" : "text-cyan-400 font-medium"}>
+                          {context.overage > 0 
+                            ? `+${formatCurrency(context.overage)} hors budget` 
+                            : `${Math.round(context.percentage)}%`
+                          }
+                        </span>
+                      </div>
+                      {/* Progress Bar */}
+                      <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all ${
+                            context.overage > 0 ? 'bg-red-500' : 'bg-cyan-500'
+                          }`}
+                          style={{ width: `${Math.min(context.percentage, 100)}%` }}
+                        />
+                      </div>
+                      <div className="text-[10px] text-white/40">
+                        {context.transactionCount} transaction{context.transactionCount > 1 ? 's' : ''} dans cette période
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 🆕 CONTEXTE FRÉQUENCE */}
+                  {context && context.type === 'frequency' && (
+                    <div className="mt-3 mb-2 bg-black/20 rounded-lg p-3 border border-white/5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/60">Achats détectés</span>
+                        <span className={context.overage > 0 ? "text-red-400 font-bold" : "text-cyan-400"}>
+                          {context.count} / {context.limit}
+                          {context.overage > 0 && ` (+${context.overage})`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Explication du déclenchement */}
                   <div className="bg-black/20 rounded-lg p-3 border border-white/5">
@@ -592,8 +817,7 @@ export function RightPanelDetails({
                       <p className="text-sm text-white/90">
                         {transaction.type === 'online' && '🌐 Paiement en ligne'}
                         {transaction.type === 'physical' && '🏪 Magasin physique'}
-                        {transaction.type === 'withdrawal' && '💵 Retrait'}
-                        {transaction.type === 'transfer' && '🔄 Virement'}
+                        {!transaction.type && '—'}
                       </p>
                     </div>
                   </div>

@@ -1,14 +1,24 @@
 /**
- * Data Context - LOCAL STORAGE VERSION
+ * Data Context - HYBRID VERSION (LOCAL + CLOUD)
+ * 
+ * Mode LOCAL (par défaut) :
  * ✅ Toutes les données stockées en localStorage
  * ✅ Pas de backend requis
+ * 
+ * Mode CLOUD (optionnel) :
+ * ✅ Données synchronisées via Supabase
+ * ✅ Migration automatique
+ * 
  * ✅ Optimisé avec useMemo et useCallback
+ * ✅ 🆕 ENRICHISSEMENT AUTOMATIQUE : income/expenses/totalImpact calculés depuis transactions
  */
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { Transaction as BaseTransaction } from 'src/utils/csv-parser'; // ✅ Import de base depuis csv-parser
 import { Rule } from '../types/rules'; // ✅ Import du vrai type Rule
+import { PersonRelation, PersonType } from '../types/people'; // ✅ Import du nouveau système relationnel
+import { storageService } from '../src/services/storage'; // ✅ Import du service de stockage
 
 // --- Types d'Entités (Plus spécifiques pour Dexie) ---
 
@@ -43,15 +53,18 @@ export interface Transaction extends Omit<BaseTransaction, 'parentTransactionId'
   splitNote?: string; // Note expliquant la division
 }
 
+/**
+ * ⚠️ DEPRECATED - Utiliser PersonRelation de types/people.ts
+ * Conservé temporairement pour rétrocompatibilité
+ */
 export interface Person {
   id: string;
   name: string;
-  avatar: string;
+  avatar?: string;
   relationship: string;
   color: string;
-  // HARMONISATION DES TYPES: ajout de 'circle' et 'totalImpact' pour People.tsx
-  circle: 'large' | 'direct' | 'extended'; 
-  totalImpact: number; // Ceci est un champ calculé ou agrégé
+  circle: string;
+  totalImpact: number;
   [key: string]: any;
 }
 
@@ -66,16 +79,15 @@ export interface Goal extends Entity {
     status: 'in-progress' | 'completed' | 'on-hold';
 }
 
-// Les données enrichies des personnes (version utilisée dans le context)
-export interface EnrichedPerson extends Person {
-  totalAmount: number;
-  income: number;
-  expenses: number;
-  transactionCount: number;
-  averageTransaction: number;
-  lastTransactionDate?: string;
-  lastTransactionAmount?: number;
-}
+/**
+ * ✅ NOUVEAU TYPE - PersonRelation enrichie
+ * 
+ * Utilise le nouveau système typologique avec :
+ * - Dimensions déclaratives (contribution, objectifs)
+ * - Indicateurs calculés (tendances, dépendances)
+ * - Signaux d'arbitrage
+ */
+export type EnrichedPerson = PersonRelation;
 
 // ✅ Réexport de Transaction pour faciliter l'import depuis DataContext
 export type { Rule }; // ✅ Réexport de Rule pour faciliter l'import
@@ -136,7 +148,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [people, setPeople] = useState<EnrichedPerson[]>([]);
+  
+  // 🔑 CHANGEMENT CRITIQUE : rawPeople stocke les données brutes (sans stats calculées)
+  const [rawPeople, setRawPeople] = useState<EnrichedPerson[]>([]);
+  
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -145,6 +160,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // Protection contre les rechargements multiples
   const loadedTokenRef = useRef<string | null>(null);
   const isLoadingRef = useRef(false);
+
+  // 🔑 ENRICHISSEMENT AUTOMATIQUE : Calcul dynamique de income/expenses/totalImpact
+  // Chaque fois que transactions ou rawPeople changent, on recalcule les stats
+  const people = useMemo(() => {
+    return rawPeople.map(person => {
+      // 1️⃣ Filtrer les transactions de cette relation
+      const personTransactions = transactions.filter(t => t.personId === person.id);
+      
+      // 2️⃣ Calculer les revenus (montants positifs)
+      const income = personTransactions
+        .filter(t => t.amount > 0)
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      // 3️⃣ Calculer les dépenses (montants négatifs en valeur absolue)
+      const expenses = personTransactions
+        .filter(t => t.amount < 0)
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      
+      // 4️⃣ Calculer l'impact total (revenus - dépenses)
+      const totalImpact = income - expenses;
+      
+      // 5️⃣ Retourner la relation enrichie avec les stats à jour
+      return {
+        ...person,
+        income,      // ✅ Toujours synchronisé avec les transactions
+        expenses,    // ✅ Toujours synchronisé avec les transactions
+        totalImpact  // ✅ Toujours synchronisé avec les transactions
+      };
+    });
+  }, [rawPeople, transactions]); // ⚡ Recalcule seulement si rawPeople ou transactions changent
 
   // Charger les données depuis localStorage quand l'utilisateur se connecte
   useEffect(() => {
@@ -168,7 +213,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setTransactions(loadFromStorage(getStorageKey(userId, 'transactions'), []));
         setBudgets(loadFromStorage(getStorageKey(userId, 'budgets'), []));
         setGoals(loadFromStorage(getStorageKey(userId, 'goals'), []));
-        setPeople(loadFromStorage(getStorageKey(userId, 'people'), []));
+        
+        // 🔑 Charger dans rawPeople au lieu de people
+        setRawPeople(loadFromStorage(getStorageKey(userId, 'people'), []));
+        
         setAccounts(loadFromStorage(getStorageKey(userId, 'accounts'), []));
         
         // Charger les catégories
@@ -193,25 +241,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const today = new Date().toISOString().split('T')[0];
     
     const sanitizedTransactions = t.map(txn => ({
-      ...txn, // ✅ On garde TOUT (y compris subCategory, merchant, etc.)
+      // 1. On garde TOUT par défaut (préserve childTransactionIds, parentTransactionId, isHidden, splitNote, etc.)
+      ...txn,
       
-      // On s'assure juste que les champs vitaux ne sont pas vides
+      // 2. On nettoie uniquement les champs critiques pour éviter les erreurs
       description: (txn.description || "Nouvelle opération").trim(),
       amount: typeof txn.amount === 'string' ? parseFloat(txn.amount) : (txn.amount || 0),
       date: (txn.date || today).split('T')[0],
       category: txn.category || "Non catégorisé",
-      // ✅ On force la préservation explicite si besoin, mais le ...txn le fait déjà
-      subCategory: txn.subCategory, 
       updatedAt: new Date().toISOString(),
       
-      childTransactionIds: Array.isArray(txn.childTransactionIds) ? txn.childTransactionIds : txn.childTransactionIds
+      // 3. On garantit l'intégrité des tableaux de split (évite les undefined)
+      childTransactionIds: Array.isArray(txn.childTransactionIds) ? txn.childTransactionIds : undefined
     }));
   
+    // Mise à jour de l'état local
     setTransactions(sanitizedTransactions);
     
+    // Sauvegarde persistante
     if (accessToken) {
       saveToStorage(getStorageKey(accessToken, 'transactions'), sanitizedTransactions);
     }
+    
+    // 🎯 Les stats de people seront automatiquement recalculées via useMemo
   }, [accessToken]);
 
   const updateBudgets = useCallback((b: any[]) => {
@@ -229,10 +281,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [accessToken]);
 
   const updatePeople = useCallback((p: EnrichedPerson[]) => {
-    setPeople(p);
+    // 🔑 CHANGEMENT CRITIQUE : Sauvegarder dans rawPeople
+    setRawPeople(p);
     if (accessToken) {
       saveToStorage(getStorageKey(accessToken, 'people'), p);
     }
+    // 🎯 Les stats (income/expenses/totalImpact) seront automatiquement recalculées via useMemo
   }, [accessToken]);
 
   const updateAccounts = useCallback((a: any[]) => {
@@ -263,11 +317,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ✅ Context value mémoïsé
+  // 🔑 On expose 'people' (enrichi) au lieu de 'rawPeople' (brut)
   const value = useMemo(() => ({
     transactions,
     budgets,
     goals,
-    people,
+    people, // ✅ Version enrichie avec income/expenses/totalImpact calculés
     accounts,
     categories,
     rules,
@@ -284,7 +339,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     transactions,
     budgets,
     goals,
-    people,
+    people, // ✅ Dépendance sur 'people' (enrichi) au lieu de 'rawPeople'
     accounts,
     categories,
     rules,

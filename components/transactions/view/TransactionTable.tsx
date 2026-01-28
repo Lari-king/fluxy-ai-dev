@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '../../ui/avatar';
-import { formatCurrency } from 'src/utils/format';
+import { formatCurrency } from '../../../src/utils/format';
 import { format, parseISO } from 'date-fns';
 
 interface TransactionTableProps {
@@ -54,7 +54,7 @@ interface TransactionTableProps {
   };
 }
 
-type SortField = 'date' | 'description' | 'amount' | 'category' | 'person';
+type SortField = 'date' | 'description' | 'amount' | 'category' | 'subCategory' | 'person';
 type SortDirection = 'asc' | 'desc';
 
 interface TransactionRowProps {
@@ -96,15 +96,21 @@ export function TransactionTable({
       childCount: number;
     }>();
 
+    // Créer un Set des IDs existants pour lookup O(1)
+    const existingIds = new Set(transactions.map(t => t.id));
+
     transactions.forEach(txn => {
       const isChild = !!(txn as any).parentTransactionId;
       const childIds = (txn as any).childTransactionIds || [];
-      const isSplit = childIds.length > 0;
+      
+      // ✅ CORRECTION : Vérifier que les enfants existent RÉELLEMENT
+      const existingChildren = childIds.filter((childId: string) => existingIds.has(childId));
+      const isSplit = existingChildren.length > 0;
 
       metadata.set(txn.id, {
         isChildTransaction: isChild,
         isSplitParent: isSplit,
-        childCount: childIds.length
+        childCount: existingChildren.length
       });
     });
 
@@ -209,6 +215,10 @@ export function TransactionTable({
           aValue = a.category || '';
           bValue = b.category || '';
           break;
+        case 'subCategory':
+          aValue = (a as any).subCategory?.toLowerCase() || '';
+          bValue = (b as any).subCategory?.toLowerCase() || '';
+          break;
         case 'person':
           const personA = peopleMap.get(a.personId || '');
           const personB = peopleMap.get(b.personId || '');
@@ -265,7 +275,7 @@ export function TransactionTable({
   // Table Header
   const TableHeader = () => (
     <div className="sticky top-0 z-10 border-b border-[var(--color-border-primary)] bg-[var(--bg-glass-elevated)] backdrop-blur-sm">
-      <div className="grid grid-cols-[40px_110px_minmax(180px,1fr)_140px_120px_160px_120px_50px] gap-2 px-6 py-3 text-xs uppercase text-[var(--color-text-tertiary)]">
+      <div className="grid grid-cols-[40px_110px_minmax(180px,1.5fr)_180px_150px_240px_130px_50px] gap-3 px-6 py-3 text-xs uppercase text-[var(--color-text-tertiary)]">
         <div className="flex items-center justify-center">
           <Checkbox
             checked={selectedIds.length === transactions.length && transactions.length > 0}
@@ -298,15 +308,19 @@ export function TransactionTable({
           {renderSortIcon('category')}
         </button>
         
-        <div className="flex items-center gap-2 text-left">
+        <button
+          onClick={() => handleSort('subCategory')}
+          className="flex items-center gap-2 hover:text-[var(--color-primary)] transition-colors text-left"
+        >
           <span className="truncate">Sous-cat.</span>
-        </div>
+          {renderSortIcon('subCategory')}
+        </button>
         
         <button
           onClick={() => handleSort('person')}
           className="flex items-center gap-2 hover:text-[var(--color-primary)] transition-colors text-left"
         >
-          <span className="truncate">Personne</span>
+          <span className="truncate">Relation</span>
           {renderSortIcon('person')}
         </button>
         
@@ -359,7 +373,7 @@ export function TransactionTable({
         exit={{ opacity: 0, y: -10 }}
         transition={{ duration: 0.15 }}
         className={`
-          grid grid-cols-[40px_110px_minmax(180px,1fr)_140px_120px_160px_120px_50px] gap-2 px-6 py-3 
+          grid grid-cols-[40px_110px_minmax(180px,1.5fr)_180px_150px_240px_130px_50px] gap-3 px-6 py-3 
           border-b border-[var(--color-border-primary)]
           hover:bg-[var(--bg-glass)] transition-colors cursor-pointer
           ${isSelected ? 'bg-[var(--color-primary)]/10 border-l-2 border-l-[var(--color-primary)]' : ''}
@@ -486,17 +500,22 @@ export function TransactionTable({
           )}
         </div>
 
-        {/* Personne */}
-        <div className="flex items-center justify-center min-w-0">
+        {/* Relation */}
+        <div className="flex items-center gap-2 min-w-0">
           {person ? (
-            <Avatar className="size-7 flex-shrink-0" title={person.name}>
-              <AvatarImage src={person.avatar} />
-              <AvatarFallback className="text-xs bg-[var(--bg-glass)] text-white">
-                {person.name.split(' ').map((n: string) => n[0]).join('')}
-              </AvatarFallback>
-            </Avatar>
+            <>
+              <Avatar className="size-10 flex-shrink-0" title={person.name}>
+                <AvatarImage src={person.avatar} />
+                <AvatarFallback className="text-xs bg-[var(--bg-glass)] text-white">
+                  {person.name.split(' ').map((n: string) => n[0]).join('')}
+                </AvatarFallback>
+              </Avatar>
+              <span className="text-sm text-[var(--color-text-primary)] font-medium truncate">
+                {person.name}
+              </span>
+            </>
           ) : (
-            <div className="size-7" />
+            <div className="size-10" />
           )}
         </div>
 
@@ -571,7 +590,7 @@ export function TransactionTable({
     return (
       <div>
         <div
-          className="grid grid-cols-[40px_110px_minmax(180px,1fr)_140px_120px_160px_120px_50px] gap-2 px-6 py-3 border-b border-[var(--color-border-primary)] bg-[var(--bg-glass)]/50 hover:bg-[var(--bg-glass)] transition-colors cursor-pointer"
+          className="grid grid-cols-[40px_110px_minmax(180px,1.5fr)_180px_150px_240px_130px_50px] gap-3 px-6 py-3 border-b border-[var(--color-border-primary)] bg-[var(--bg-glass)]/50 hover:bg-[var(--bg-glass)] transition-colors cursor-pointer"
           onClick={toggleExpand}
         >
           <div className="flex items-center justify-center">

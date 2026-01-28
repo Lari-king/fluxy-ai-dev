@@ -1,341 +1,250 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, User } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Textarea } from '../ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
-
-// Type élargi pour inclure toutes les options de la Select ET les valeurs personnalisées (string)
-export type PersonCircle = 'direct' | 'extended' | 'large' | 'friends' | 'business' | 'community' | string;
-
-interface Person {
-  id: string;
-  name: string;
-  avatar?: string;
-  // Utilisation du type élargi
-  circle: PersonCircle; 
-  relationship: string;
-  totalImpact: number;
-  income: number;
-  expenses: number;
-  color: string;
-  email?: string;
-  phone?: string;
-  birthDate?: string;
-  notes?: string;
-}
+import { X, Upload, User } from 'lucide-react'; // Nettoyage des icônes inutilisées
+import { Input } from 'components/ui/input';
+import { Label } from 'components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from 'components/ui/select';
+import { Textarea } from 'components/ui/textarea';
+import { Avatar, AvatarFallback, AvatarImage } from 'components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from 'components/ui/tabs';
+import { Button } from 'components/ui/button';
+import {
+  PersonType,
+  ContributionType,
+  TargetObjective,
+  ProgressionState,
+  CONTRIBUTION_TYPE_LABELS,
+  TARGET_OBJECTIVE_LABELS,
+  PersonRelation,
+} from '@/types/people';
 
 interface PersonFormProps {
-  person?: Person;
+  person?: PersonRelation;
   onClose: () => void;
-  onSave: (person: Person) => void;
+  onSave: (person: PersonRelation) => void;
 }
 
-const PRESET_COLORS = [
-  '#3B82F6', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6',
-  '#EF4444', '#06B6D4', '#F97316', '#14B8A6', '#A855F7',
-];
-
-// Liste des cercles prédéfinis pour la logique de l'input personnalisé
-const PREDEFINED_CIRCLES = ['direct', 'extended', 'large', 'friends', 'business', 'community'];
-
-const RELATIONSHIPS = [
-  'Conjoint(e)', 'Compagne', 'Compagnon', 'Épouse', 'Époux',
-  'Enfant', 'Fils', 'Fille',
-  'Père', 'Mère', 'Parent',
-  'Frère', 'Sœur',
-  'Grand-père', 'Grand-mère',
-  'Oncle', 'Tante', 'Cousin', 'Cousine',
-  'Neveu', 'Nièce',
-  'Ami(e)', 'Autre',
-];
+const PRESET_COLORS = ['#3B82F6', '#EC4899', '#F59E0B', '#10B981', '#8B5CF6', '#EF4444', '#06B6D4'];
+const RELATIONSHIPS = ['Conjoint(e)', 'Enfant', 'Parent', 'Frère/Sœur', 'Ami(e)', 'Associé(e)', 'Entreprise', 'Abonnement IA', 'Autre'];
 
 export function PersonForm({ person, onClose, onSave }: PersonFormProps) {
+  const [activeTab, setActiveTab] = useState('identity');
+  
   const [formData, setFormData] = useState({
     name: person?.name || '',
+    // Correction de l'erreur TS : on utilise l'accès dynamique
+    originalName: (person as any)?.originalName || person?.name || '',
     relationship: person?.relationship || '',
-    // formData.circle peut être n'importe quelle chaîne, y compris les options personnalisées
     circle: person?.circle || 'direct', 
     color: person?.color || PRESET_COLORS[0],
     email: person?.email || '',
     phone: person?.phone || '',
     birthDate: person?.birthDate || '',
     notes: person?.notes || '',
+    personType: person?.personType || PersonType.PHYSIQUE,
+    contributionType: person?.contributionType || ContributionType.SECURITE,
+    targetObjective: person?.targetObjective || TargetObjective.STABILISER,
+    targetMonthlyAmount: person?.targetMonthlyAmount || 0,
+    targetDate: person?.targetDate || '',
   });
 
   const [avatarPreview, setAvatarPreview] = useState(person?.avatar || '');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Note: income, expenses, and totalImpact are calculated automatically from transactions
-    const newPerson: Person = {
-      id: person?.id || `person_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: formData.name,
-      relationship: formData.relationship,
-      // Avec le type PersonCircle élargi, l'assignation est valide.
-      circle: formData.circle, 
-      color: formData.color,
-      avatar: avatarPreview,
-      email: formData.email,
-      phone: formData.phone,
-      birthDate: formData.birthDate,
-      notes: formData.notes,
-      // These will be calculated on the backend
-      income: 0,
-      expenses: 0,
-      totalImpact: 0,
-    };
-
-    onSave(newPerson);
-  };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
+      reader.onloadend = () => setAvatarPreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
 
-  const isCustomCircle = !PREDEFINED_CIRCLES.includes(formData.circle);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const impact = Math.abs(person?.totalImpact || 0);
+    const target = formData.targetMonthlyAmount || 0;
+    const percentage = target > 0 ? Math.min(Math.round((impact / target) * 100), 100) : 0;
+
+    onSave({
+      ...person,
+      ...formData,
+      id: person?.id || `person_${crypto.randomUUID()}`,
+      avatar: avatarPreview,
+      totalImpact: person?.totalImpact || 0,
+      progressionPercentage: percentage,
+      progressionState: percentage >= 100 ? ProgressionState.EN_AVANCE : ProgressionState.NEUTRE,
+    } as PersonRelation);
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <motion.div 
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }}
+          className="absolute inset-0 bg-black/90 backdrop-blur-md"
+          onClick={onClose}
+        />
+
+        <motion.div 
+          initial={{ scale: 0.95, y: 20 }} 
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0.95, y: 20 }}
+          className="relative z-[101] bg-[#1a1b23] border border-white/10 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden text-white"
+          onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 text-white p-6 flex items-center justify-between">
-            <h2 className="text-2xl">
-              {person ? 'Modifier la personne' : 'Ajouter une personne'}
-            </h2>
-            <Button
-              onClick={onClose}
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-            >
-              <X className="w-5 h-5" />
-            </Button>
+          <div className="p-6 border-b border-white/5 bg-[#1f2029] flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className="relative group">
+                <Avatar className="w-16 h-16 border-2" style={{ borderColor: formData.color }}>
+                  <AvatarImage src={avatarPreview} className="object-cover" />
+                  <AvatarFallback style={{ backgroundColor: formData.color }} className="text-xl font-bold text-white">
+                    {formData.name ? formData.name.charAt(0).toUpperCase() : <User />}
+                  </AvatarFallback>
+                </Avatar>
+                <label className="absolute -bottom-1 -right-1 w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center cursor-pointer border-2 border-[#1a1b23] hover:bg-indigo-500 transition-colors z-10">
+                  <Upload className="w-3.5 h-3.5 text-white" />
+                  <input type="file" className="hidden" onChange={handleAvatarUpload} accept="image/*" />
+                </label>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white tracking-tight">{person ? 'Modifier le profil' : 'Nouvelle relation'}</h2>
+                <p className="text-[10px] text-gray-500 font-mono uppercase tracking-widest">
+                  ID: {person?.id ? person.id.slice(0, 18) : 'Génération auto'}
+                </p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-gray-400 transition-colors"><X /></button>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-            <div className="space-y-6">
-              {/* Avatar & Nom */}
-              <div className="flex items-start gap-6">
-                <div className="flex flex-col items-center gap-3">
-                  <Avatar className="w-24 h-24 ring-4 ring-offset-2" style={{ '--tw-ring-color': formData.color }as React.CSSProperties}>
-                    <AvatarImage src={avatarPreview} />
-                    <AvatarFallback style={{ backgroundColor: formData.color }} className="text-white text-2xl">
-                      {formData.name.charAt(0) || <User className="w-10 h-10" />}
-                    </AvatarFallback>
-                  </Avatar>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleAvatarUpload}
-                    />
-                    <Button type="button" variant="outline" size="sm" asChild>
-                      <span>
-                        <Upload className="w-4 h-4 mr-2" />
-                        Photo
-                      </span>
-                    </Button>
-                  </label>
-                </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+            <TabsList className="bg-[#1f2029] border-b border-white/5 rounded-none h-12 px-6 justify-start gap-8">
+              <TabsTrigger value="identity" className="data-[state=active]:text-indigo-400 border-b-2 border-transparent data-[state=active]:border-indigo-400 rounded-none px-0 text-[10px] font-black uppercase tracking-widest text-gray-500">Identité</TabsTrigger>
+              <TabsTrigger value="contribution" className="data-[state=active]:text-indigo-400 border-b-2 border-transparent data-[state=active]:border-indigo-400 rounded-none px-0 text-[10px] font-black uppercase tracking-widest text-gray-500">Impact</TabsTrigger>
+              <TabsTrigger value="objectives" className="data-[state=active]:text-indigo-400 border-b-2 border-transparent data-[state=active]:border-indigo-400 rounded-none px-0 text-[10px] font-black uppercase tracking-widest text-gray-500">Objectifs</TabsTrigger>
+            </TabsList>
 
-                <div className="flex-1 space-y-4">
-                  <div>
-                    <Label htmlFor="name">Nom complet *</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="ex: Marie Dupont"
-                      required
-                      className="mt-1.5"
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#1a1b23] custom-scrollbar">
+              
+              <TabsContent value="identity" className="space-y-6 mt-0 outline-none">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Label className="text-[10px] font-black uppercase text-gray-500 mb-2 block tracking-wider">Désignation</Label>
+                    <Input 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value})} 
+                      className="bg-[#2d2e3a] border-white/10 h-12 !text-white placeholder:text-gray-600" 
+                      placeholder="Nom ou Raison Sociale" required 
                     />
                   </div>
-
-                  <div>
-                    <Label htmlFor="relationship">Relation *</Label>
-                    <Select
-                      value={formData.relationship}
-                      onValueChange={(value) => setFormData({ ...formData, relationship: value })}
-                    >
-                      <SelectTrigger className="mt-1.5">
-                        <SelectValue placeholder="Sélectionner la relation" />
+                  
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-gray-500">Nature</Label>
+                    <Select value={formData.personType} onValueChange={(v: PersonType) => setFormData({...formData, personType: v})}>
+                      <SelectTrigger className="bg-[#2d2e3a] border-white/10 h-12 !text-white">
+                        <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
-                        {RELATIONSHIPS.map((rel) => (
-                          <SelectItem key={rel} value={rel}>
-                            {rel}
-                          </SelectItem>
-                        ))}
+                      <SelectContent className="bg-[#1f2029] border-white/10 !text-white z-[110]" position="popper">
+                        <SelectItem value={PersonType.PHYSIQUE}>👤 Physique</SelectItem>
+                        <SelectItem value={PersonType.MORALE}>🏢 Morale</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-              </div>
 
-              {/* Cercle familial */}
-              <div>
-                <Label htmlFor="circle">Cercle / Catégorie *</Label>
-                <div className="space-y-2 mt-1.5">
-                  <Select
-                    value={isCustomCircle ? 'custom' : formData.circle}
-                    onValueChange={(value) => {
-                        // Si l'utilisateur choisit une valeur prédéfinie
-                        if (PREDEFINED_CIRCLES.includes(value)) {
-                            setFormData({ ...formData, circle: value });
-                        } 
-                        // S'il choisit l'option "Personnalisé", on ne change rien pour l'instant
-                        // La valeur sera mise à jour par l'Input en dessous
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner ou créer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="direct">Famille directe</SelectItem>
-                      <SelectItem value="extended">Famille élargie</SelectItem>
-                      <SelectItem value="large">Grande famille</SelectItem>
-                      <SelectItem value="friends">Amis proches</SelectItem>
-                      <SelectItem value="business">Affaires / Business</SelectItem>
-                      <SelectItem value="community">Communauté</SelectItem>
-                      {/* Option pour marquer le cercle personnalisé actuel */}
-                      <SelectItem value="custom" disabled={!isCustomCircle}>
-                         Personnalisé: {formData.circle}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">ou créer une nouvelle catégorie:</span>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-gray-500">Relation</Label>
+                    <Select value={formData.relationship} onValueChange={v => setFormData({...formData, relationship: v})}>
+                      <SelectTrigger className="bg-[#2d2e3a] border-white/10 h-12 !text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1f2029] border-white/10 !text-white z-[110]" position="popper">
+                        {RELATIONSHIPS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Input
-                    placeholder="ex: Équipe sportive, Voisins, Collègues..."
-                    // Affiche le cercle actuel si c'est un cercle personnalisé
-                    value={isCustomCircle ? formData.circle : ''}
-                    onChange={(e) => setFormData({ ...formData, circle: e.target.value })}
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-gray-500">Email</Label>
+                    <Input value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="bg-[#2d2e3a] border-white/10 h-12 !text-white" placeholder="contact@example.com" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-gray-500">Contact</Label>
+                    <Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="bg-[#2d2e3a] border-white/10 h-12 !text-white" placeholder="+33..." />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase text-gray-500">Notes confidentielles</Label>
+                  <Textarea 
+                    value={formData.notes} 
+                    onChange={e => setFormData({...formData, notes: e.target.value})} 
+                    className="bg-[#2d2e3a] border-white/10 min-h-[100px] !text-white resize-none" 
                   />
                 </div>
-              </div>
+              </TabsContent>
 
-              {/* Couleur */}
-              <div>
-                <Label>Couleur de profil</Label>
-                <div className="flex gap-2 mt-1.5 flex-wrap">
-                  {PRESET_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, color })}
-                      className={`w-10 h-10 rounded-full transition-transform hover:scale-110 ${
-                        formData.color === color ? 'ring-4 ring-offset-2 ring-gray-400' : ''
-                      }`}
-                      style={{ backgroundColor: color }}
-                    />
+              <TabsContent value="contribution" className="space-y-4 mt-0 outline-none">
+                <div className="grid grid-cols-1 gap-3">
+                  {Object.values(ContributionType).map((type) => (
+                    <button 
+                      key={type} type="button" 
+                      onClick={() => setFormData({...formData, contributionType: type})}
+                      className={`p-4 rounded-xl border text-left transition-all flex items-center gap-4 ${formData.contributionType === type ? 'bg-indigo-600/20 border-indigo-500 shadow-[0_0_20px_rgba(79,70,229,0.15)]' : 'bg-[#2d2e3a] border-white/5 opacity-40 hover:opacity-100'}`}
+                    >
+                      <span className="text-2xl">{(type === 'SURVIE' && '🛡️') || (type === 'SECURITE' && '🏠') || (type === 'CROISSANCE' && '📈') || '✨'}</span>
+                      <div>
+                        <p className="text-sm font-bold text-white">{CONTRIBUTION_TYPE_LABELS[type]}</p>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">Impact de flux financier</p>
+                      </div>
+                    </button>
                   ))}
                 </div>
-              </div>
+              </TabsContent>
 
-              {/* Note about financial impact */}
-              <div className="bg-blue-50 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-4">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  💡 <strong>Impact financier calculé automatiquement</strong>
-                  <br />
-                  Les revenus et dépenses de cette personne seront calculés automatiquement en fonction des transactions qui lui sont associées.
-                </p>
-              </div>
-
-              {/* Coordonnées */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="email@exemple.com"
-                    className="mt-1.5"
-                  />
+              <TabsContent value="objectives" className="space-y-6 mt-0 outline-none">
+                <div className="space-y-4">
+                  <Label className="text-[10px] font-black uppercase text-gray-500 block tracking-widest">Objectif Stratégique</Label>
+                  <Select value={formData.targetObjective} onValueChange={(v: TargetObjective) => setFormData({...formData, targetObjective: v})}>
+                    <SelectTrigger className="bg-[#2d2e3a] border-white/10 h-12 !text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1f2029] border-white/10 !text-white z-[110]" position="popper">
+                      {Object.entries(TARGET_OBJECTIVE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  
+                  <div className="grid grid-cols-2 gap-4 pt-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-gray-500">Montant Cible (€)</Label>
+                      <Input 
+                        type="number" 
+                        value={formData.targetMonthlyAmount || ''} 
+                        onChange={e => setFormData({...formData, targetMonthlyAmount: Number(e.target.value)})} 
+                        className="bg-[#2d2e3a] border-white/10 h-12 !text-indigo-400 font-bold" 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-black uppercase text-gray-500">Date d'échéance</Label>
+                      <Input type="date" value={formData.targetDate} onChange={e => setFormData({...formData, targetDate: e.target.value})} className="bg-[#2d2e3a] border-white/10 h-12 !text-white" />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="phone">Téléphone</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+33 6 12 34 56 78"
-                    className="mt-1.5"
-                  />
-                </div>
-              </div>
+              </TabsContent>
+            </form>
 
-              {/* Date de naissance */}
-              <div>
-                <Label htmlFor="birthDate">Date de naissance</Label>
-                <Input
-                  id="birthDate"
-                  type="date"
-                  value={formData.birthDate}
-                  onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                  className="mt-1.5"
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Informations supplémentaires..."
-                  rows={3}
-                  className="mt-1.5"
-                />
-              </div>
+            <div className="p-6 border-t border-white/5 bg-[#1f2029] flex gap-3">
+              <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-gray-500 uppercase text-[10px] font-black tracking-widest hover:bg-white/5">Annuler</Button>
+              <Button onClick={handleSubmit} className="flex-[2] bg-indigo-600 hover:bg-indigo-500 text-white uppercase text-[10px] font-black tracking-widest shadow-lg shadow-indigo-600/30 transition-all active:scale-95">
+                {person ? 'Valider les modifications' : 'Enregistrer la relation'}
+              </Button>
             </div>
-          </form>
-
-          {/* Footer */}
-          <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-800 px-6 py-4 flex items-center justify-end gap-3 border-t">
-            <Button onClick={onClose} variant="outline">
-              Annuler
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700"
-            >
-              {person ? 'Enregistrer' : 'Ajouter'}
-            </Button>
-          </div>
+          </Tabs>
         </motion.div>
-      </motion.div>
+      </div>
     </AnimatePresence>
   );
 }

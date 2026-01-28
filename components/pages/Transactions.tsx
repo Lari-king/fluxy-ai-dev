@@ -533,6 +533,88 @@ export function Transactions() {
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm("Supprimer cette transaction définitivement ?")) return;
+    
+    const transactionToDelete = transactions.find(t => t.id === id);
+    if (!transactionToDelete) return;
+
+    // 🆕 CAS 1 : Suppression d'une SOUS-TRANSACTION
+    // → Vérifier si c'est la dernière enfant, auquel cas nettoyer le parent
+    if (transactionToDelete.parentTransactionId) {
+      const parentId = transactionToDelete.parentTransactionId;
+      const parent = transactions.find(t => t.id === parentId);
+      
+      if (parent && parent.childTransactionIds) {
+        // Enfants restants après suppression
+        const remainingChildren = parent.childTransactionIds.filter(childId => childId !== id);
+        
+        if (remainingChildren.length === 0) {
+          // ✅ TOUTES les sous-opérations supprimées → Nettoyer le parent
+          const cleanedParent: Transaction = {
+            ...parent,
+            childTransactionIds: undefined,
+            isHidden: false,
+            splitNote: undefined,
+          };
+          
+          const updated = transactions
+            .filter(t => t.id !== id)
+            .map(t => t.id === parentId ? cleanedParent : t);
+          
+          await handleUpdateDatabase(updated);
+          toast.success("Dernière sous-opération supprimée. Transaction d'origine restaurée.");
+          setSelectedTransaction(prev => prev?.id === id ? null : prev);
+          return;
+        } else {
+          // Il reste d'autres enfants → Juste mettre à jour la liste
+          const updatedParent: Transaction = {
+            ...parent,
+            childTransactionIds: remainingChildren,
+          };
+          
+          const updated = transactions
+            .filter(t => t.id !== id)
+            .map(t => t.id === parentId ? updatedParent : t);
+          
+          await handleUpdateDatabase(updated);
+          toast.success("Sous-opération supprimée");
+          setSelectedTransaction(prev => prev?.id === id ? null : prev);
+          return;
+        }
+      }
+    }
+
+    // 🆕 CAS 2 : Suppression d'une TRANSACTION PARENTE (divisée)
+    // → Ajouter métadonnées d'audit aux enfants orphelins
+    if (transactionToDelete.childTransactionIds && transactionToDelete.childTransactionIds.length > 0) {
+      const deletionTimestamp = new Date().toISOString();
+      
+      const updatedChildren = transactions.map(t => {
+        if (transactionToDelete.childTransactionIds?.includes(t.id)) {
+          // Ajouter les métadonnées d'audit
+          return {
+            ...t,
+            parentTransactionId: undefined, // Devenir orpheline
+            auditInfo: {
+              wasChildOf: {
+                id: transactionToDelete.id,
+                description: transactionToDelete.description,
+                amount: transactionToDelete.amount,
+                date: transactionToDelete.date,
+                deletedAt: deletionTimestamp,
+              }
+            }
+          };
+        }
+        return t;
+      }).filter(t => t.id !== id); // Supprimer la transaction parente
+      
+      await handleUpdateDatabase(updatedChildren);
+      toast.success(`Transaction divisée supprimée. ${transactionToDelete.childTransactionIds.length} sous-opérations conservées avec historique.`);
+      setSelectedTransaction(prev => prev?.id === id ? null : prev);
+      return;
+    }
+
+    // 🆕 CAS 3 : Suppression STANDARD
     const updated = transactions.filter(t => t.id !== id);
     await handleUpdateDatabase(updated);
     toast.success("Transaction supprimée");
@@ -611,7 +693,35 @@ export function Transactions() {
         message = `${selectedIds.length} transactions supprimées`;
         break;
 
-      case 'categorize':
+        case 'categorize':
+          if (!payload) return;
+          
+          // Trouver les informations complètes sur la catégorie sélectionnée
+          const selectedCat = categories.find(c => c.name === payload);
+          
+          updatedList = transactions.map(t => {
+            if (selectedSet.has(t.id)) {
+              if (selectedCat?.parentId) {
+                // C'est une SOUS-CATÉGORIE : on doit trouver et assigner son parent aussi
+                const parentCat = categories.find(c => c.id === selectedCat.parentId);
+                return { 
+                  ...t, 
+                  category: parentCat ? parentCat.name : t.category, 
+                  subCategory: selectedCat.name 
+                };
+              } else {
+                // C'est une CATÉGORIE PARENTE : on l'assigne et on vide la sous-catégorie
+                return { 
+                  ...t, 
+                  category: payload, 
+                  subCategory: '' 
+                };
+              }
+            }
+            return t;
+          });
+          message = `Mise à jour vers : ${payload}`;
+          break;
         if (!payload) return;
         const isSubCategory = categories.some(c => c.name === payload && c.parentId);
         
@@ -983,6 +1093,7 @@ export function Transactions() {
           }}
           categories={categories}
           people={people}
+          allTransactions={transactions}
         />
 
       </div>

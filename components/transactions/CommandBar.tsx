@@ -12,6 +12,11 @@
  * - Calcul des compteurs optimisé (une seule boucle)
  * - Suppression des re-renders inutiles
  * - useCallback sur tous les handlers
+ * 
+ * 🔧 CORRECTIONS APPLIQUÉES :
+ * - ✅ Sous-catégories passent NAME au lieu de ID
+ * - ✅ Compteurs utilisent clé composite ${parent.name}__${child.name}
+ * - ✅ Calcul compteurs compatible ID/Nom avec categoryLookup
  */
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
@@ -193,23 +198,43 @@ export function CommandBarNew({
   const [showActionMenu, setShowActionMenu] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement>(null);
 
-  // ⚡ PERFORMANCE : Compteurs optimisés (une seule boucle)
+  // ⚡ PERFORMANCE : Carte d'identité des catégories (ID ↔ NOM)
+  const categoryLookup = useMemo(() => {
+    const idToName = new Map<string, string>();
+    const nameToId = new Map<string, string>();
+    
+    categories.forEach(cat => {
+      idToName.set(cat.id, cat.name);
+      nameToId.set(cat.name.toLowerCase(), cat.id);
+    });
+    
+    return { idToName, nameToId };
+  }, [categories]);
+
+  // ⚡ PERFORMANCE : Compteurs optimisés (une seule boucle) - 🔧 CORRIGÉ
   const transactionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     
     for (const t of transactions) {
+      // 1️⃣ Compteur CATÉGORIE (gérer ID → Nom)
       if (t.category && t.category !== 'Non classifié') {
-        counts[t.category] = (counts[t.category] || 0) + 1;
+        const catName = categoryLookup.idToName.get(t.category) || t.category;
+        counts[catName] = (counts[catName] || 0) + 1;
       }
       
-      if (t.subCategory) {
-        const key = `${t.category}__${t.subCategory}`;
+      // 2️⃣ Compteur SOUS-CATÉGORIE (clé composite avec noms)
+      if (t.subCategory && t.category) {
+        const catName = categoryLookup.idToName.get(t.category) || t.category;
+        const subCatName = categoryLookup.idToName.get(t.subCategory) || t.subCategory;
+        
+        // ✅ Clé composite : "Alimentation__Restaurants"
+        const key = `${catName}__${subCatName}`;
         counts[key] = (counts[key] || 0) + 1;
       }
     }
     
     return counts;
-  }, [transactions]);
+  }, [transactions, categoryLookup]);
 
   // ⚡ PERFORMANCE : Arbre des catégories stable
   const categoryTree = useMemo(() => {
@@ -402,7 +427,7 @@ export function CommandBarNew({
                 
                 <div className="flex items-center gap-2">
                   
-                  {/* CATÉGORIE PRINCIPALE - CORRIGÉ : Utilise c.id */}
+                  {/* CATÉGORIE PRINCIPALE */}
                   <div className="relative group/cat">
                     <motion.button 
                       whileHover={{ scale: 1.1 }}
@@ -439,7 +464,7 @@ export function CommandBarNew({
                     </div>
                   </div>
 
-                  {/* SOUS-CATÉGORIE - CORRIGÉ : Utilise child.id */}
+                  {/* SOUS-CATÉGORIE - 🔧 CORRIGÉ */}
                   <div className="relative group/sub">
                     <motion.button 
                       whileHover={{ scale: 1.1 }}
@@ -470,8 +495,8 @@ export function CommandBarNew({
                             </div>
                             {children.map(child => (
                               <button 
-                                key={child.id} 
-                                onClick={() => onBulkCategorizeSubCategory?.(child.id)} 
+                                key={child.id}
+                                onClick={() => onBulkCategorizeSubCategory?.(child.name)} 
                                 className="w-full text-left pl-8 pr-4 py-3 text-sm text-white/70 hover:bg-purple-500/20 hover:text-white transition-all flex items-center justify-between group/item"
                               >
                                 <div className="flex items-center gap-2 flex-1">
@@ -480,7 +505,7 @@ export function CommandBarNew({
                                   <span className="text-[10px] text-white/30">→ {parent.name}</span>
                                 </div>
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/40 ml-2">
-                                  {transactionCounts[child.id] || 0}
+                                  {transactionCounts[`${parent.name}__${child.name}`] || 0}
                                 </span>
                               </button>
                             ))}
