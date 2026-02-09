@@ -1,4 +1,4 @@
-import { Transaction } from './csv-parser';
+import { Transaction } from '@/utils/csv-parser';
 
 /**
  * ⚡ CONFIGURATION DES POIDS DE PERTINENCE

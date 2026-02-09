@@ -3,7 +3,7 @@
  * Construction de la grille thermique des habitudes (jour du mois)
  */
 
-import type { Transaction } from '../csv-parser';
+import type { Transaction } from '@/utils/csv-parser';
 
 export interface HeatmapCell {
   day: number; // 1-31

@@ -13,7 +13,7 @@
  * Précision : ~85-90% (vs 70-75% actuel)
  */
 
-import { Transaction } from 'contexts/DataContext';
+import { Transaction } from '@/contexts/DataContext';
 
 // ========================================
 // TYPES

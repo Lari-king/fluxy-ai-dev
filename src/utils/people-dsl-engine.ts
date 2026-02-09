@@ -24,8 +24,8 @@ import {
     ContributionType,
     ProgressionState,
     PersonType,
-  } from '../../types/people';
-  import { DEFAULT_ARBITRAGE_RULES } from '../constants/people-config';
+  } from '../types/people';
+  import { DEFAULT_ARBITRAGE_RULES } from '@/constants/people-config';
   
   // ========================================
   // 🔍 ÉVALUATION DES CONDITIONS

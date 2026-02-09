@@ -17,7 +17,7 @@ export {
     // Types existants
     type Person,
     type PersonWithStats,
-  } from '../people-calculator';
+  } from '@/utils/people-calculator';
   
   // Nouvelles fonctions avancées
   export {
@@ -35,7 +35,7 @@ export {
     enrichPeopleWithStatsV2,
     // Types
     type TransactionAggregation,
-  } from '../people-calculator';
+  } from '@/utils/people-calculator';
   
   // ========================================
   // 🎯 SCORES
@@ -48,7 +48,7 @@ export {
     interpretLibertéScore,
     interpretResilienceScore,
     generateRecommendations,
-  } from '../people-scores';
+  } from '@/utils/people-scores';
   
   // ========================================
   // 🤖 MOTEUR DSL
@@ -65,7 +65,7 @@ export {
     createRule,
     // Types
     type RuleStats,
-  } from '../people-dsl-engine';
+  } from '@/utils/people-dsl-engine';
   
   // ========================================
   // 🚀 ORCHESTRATEUR
@@ -85,7 +85,7 @@ export {
     type EnrichmentResult,
     type PeopleFilter,
     type SortCriteria,
-  } from '../people-enrichment';
+  } from '@/utils/people-enrichment';
   
   // ========================================
   // 🔄 MIGRATION
@@ -98,7 +98,7 @@ export {
     needsMigration,
     sanitizePersonForSave,
     sanitizePeopleForSave,
-  } from '../people-migration';
+  } from '@/utils/people-migration';
   
   // ========================================
   // ⚙️ CONFIGURATION
@@ -118,7 +118,7 @@ export {
     TREND_CALCULATION_MONTHS,
     DEFAULT_PERSON_VALUES,
     calculateDependanceLevel,
-  } from '../../constants/people-config';
+  } from '@/constants/people-config';
   
   // ========================================
   // 📘 TYPES CENTRAUX

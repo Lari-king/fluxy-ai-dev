@@ -7,8 +7,8 @@
  * ⚠️ Migration NON-DESTRUCTIVE : les anciennes données sont préservées
  */
 
-import { PersonRelation, PersonType } from '../../types/people';
-import { DEFAULT_PERSON_VALUES } from '../constants/people-config';
+import { PersonRelation, PersonType } from '../types/people';
+import { DEFAULT_PERSON_VALUES } from '@/constants/people-config';
 
 /**
  * Interface de l'ancien système Person (pour typage lors de la migration)

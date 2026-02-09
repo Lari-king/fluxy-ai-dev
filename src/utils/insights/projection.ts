@@ -1,8 +1,10 @@
-import { Transaction } from 'src/utils/csv-parser';
+import { Transaction } from '@/utils/csv-parser';
 import { 
   getCategoryBehavioralProfileCached, 
   type BehavioralAxis
-} from './behavioralAxes';
+} from '@/utils/insights/behavioralAxes';
+// 👇 Import crucial pour utiliser le même moteur que le panneau gauche
+import { detectRecurringPatterns, RecurringSettings, RecurringDetectionResult } from '@/utils/insights/recurring-detection';
 
 // --- TYPES ---
 export interface RecurringPrediction {
@@ -50,6 +52,8 @@ export interface MonthEndProjection {
 interface ProjectionSettings {
   inflationFactor?: number;
   userAge?: number;
+  // 👇 Ajout pour permettre de passer les réglages du contexte
+  recurringSettings?: RecurringSettings;
 }
 
 export interface DailyGoal {
@@ -61,7 +65,22 @@ export interface DailyGoal {
 }
 
 // ================================================================
-// 🚀 CACHES DE PERFORMANCE (X10 SPEED)
+// 🚀 SETTINGS PAR DÉFAUT (FALLBACK)
+// ================================================================
+// Ces réglages assurent que la projection détecte "large" si aucun setting n'est fourni
+const DEFAULT_RECURRING_SETTINGS: RecurringSettings = {
+  enabled: true,
+  minOccurrences: 3,
+  maxCoefficientVariation: 35, // Tolérance élevée pour capturer les variations
+  minConfidence: 45,           // Seuil bas pour ne pas rater MSA/Bouygues
+  activeMultiplier: 1.8,
+  typeTolerance: 2,
+  useSemanticSimilarity: true,
+  semanticMinScore: 65
+};
+
+// ================================================================
+// 🚀 CACHES DE PERFORMANCE
 // ================================================================
 const BEHAVIOR_CACHE = new Map<string, 'STRICT' | 'FLEXIBLE' | 'BURN_RATE'>();
 const NORM_CACHE = new Map<string, string>();
@@ -87,7 +106,7 @@ export function getBehavior(category?: string): 'STRICT' | 'FLEXIBLE' | 'BURN_RA
 }
 
 /**
- * Normalisation mémoïsée (évite les regex à chaque itération)
+ * Normalisation mémoïsée
  */
 export function normalizeDescription(desc: string): string {
   if (NORM_CACHE.has(desc)) return NORM_CACHE.get(desc)!;
@@ -104,12 +123,16 @@ export function normalizeDescription(desc: string): string {
 }
 
 /**
- * Projection de fin de mois optimisée
+ * 🚀 PROJECTION DE FIN DE MOIS - VERSION UNIFIÉE
+ * Utilise désormais le même moteur que le LeftPanel (detectRecurringPatterns)
+ * 
+ * NOUVEAU : support de preCalculatedPatterns pour éviter le double calcul
  */
 export function calculateMonthEndProjection(
   transactions: Transaction[],
   currentBalance: number = 0,
-  settings?: ProjectionSettings
+  settings?: ProjectionSettings,
+  preCalculatedPatterns?: RecurringDetectionResult  // ← PARAMÈTRE AJOUTÉ (étape 1)
 ): MonthEndProjection {
   const safeBalance = Number(currentBalance) || 0;
   const now = new Date();
@@ -117,126 +140,103 @@ export function calculateMonthEndProjection(
   const currentYear = now.getFullYear();
   const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const daysRemaining = Math.max(0, lastDayOfMonth - now.getDate());
+  const endOfMonthDate = new Date(currentYear, currentMonth, lastDayOfMonth, 23, 59, 59);
 
-  // Une seule boucle pour séparer les données (Gain perf significatif)
+  // 1. Collecte des transactions DEJA passées ce mois-ci
   const currentMonthTxns: Transaction[] = [];
   let completedRevenue = 0;
   let completedExpenses = 0;
-  const groups: Record<string, Transaction[]> = {};
 
   for (const t of transactions) {
     const amount = typeof t.amount === 'string' ? parseFloat(t.amount) : (t.amount || 0);
     const date = new Date(t.date);
     
-    // 1. Collecte mois en cours
     if (date.getMonth() === currentMonth && date.getFullYear() === currentYear) {
       currentMonthTxns.push({ ...t, amount });
       if (amount > 0) completedRevenue += amount;
       else completedExpenses += Math.abs(amount);
     }
-
-    // 2. Groupement pour récurrence
-    if (amount === 0 || t.description.toLowerCase().includes('virement interne')) continue;
-    
-    const behavior = getBehavior(t.category);
-    const normName = normalizeDescription(t.description);
-    
-    let groupKey: string;
-    if (behavior === 'STRICT') {
-      groupKey = `${amount > 0 ? 'IN' : 'OUT'}-${normName}-STRICT`;
-    } else if (behavior === 'FLEXIBLE') {
-      groupKey = `${amount > 0 ? 'IN' : 'OUT'}-${normName}-${Math.round(Math.abs(amount) / 10) * 10}`;
-    } else if (amount > 0) {
-      groupKey = `IN-${normName}-BURN`;
-    } else continue;
-
-    if (!groups[groupKey]) groups[groupKey] = [];
-    groups[groupKey].push({ ...t, amount });
   }
 
   const sumCurrentMonth = completedRevenue - completedExpenses;
   const previousMonthEndBalance = safeBalance - sumCurrentMonth;
 
-  // 3. ANALYSE ET FILTRAGE DES GROUPES
-  const allPredictions: RecurringPrediction[] = [];
-  const endOfMonth = new Date(currentYear, currentMonth, lastDayOfMonth, 23, 59, 59);
-  
-  for (const groupTxns of Object.values(groups)) {
-    const firstTx = groupTxns[0];
-    const isRevenue = firstTx.amount > 0;
-    const behavior = getBehavior(firstTx.category);
-    
-    const minOccurrences = (behavior === 'STRICT' || isRevenue) ? 2 : 3;
-    const minConfidence = (behavior === 'STRICT' || isRevenue) ? 60 : 70;
+  // 2. DÉTECTION INTELLIGENTE (via le moteur R.A.S.P partagé)
+  // NOUVEAU : réutilisation si patterns déjà calculés (évite le double calcul)
+  let detectionResult: RecurringDetectionResult;
 
-    if (groupTxns.length < minOccurrences) continue;
-
-    // Calcul intervalle
-    groupTxns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    let totalDays = 0;
-    const intervals: number[] = [];
-    for (let i = 0; i < groupTxns.length - 1; i++) {
-      const diff = Math.ceil(Math.abs(new Date(groupTxns[i].date).getTime() - new Date(groupTxns[i+1].date).getTime()) / 86400000);
-      intervals.push(diff);
-      totalDays += diff;
-    }
-
-    const avgInterval = totalDays / intervals.length;
-    const variance = intervals.reduce((acc, v) => acc + Math.pow(v - avgInterval, 2), 0) / intervals.length;
-    const regularityScore = Math.max(0, 100 - (Math.sqrt(variance) / avgInterval * 100)) + (behavior === 'STRICT' ? 20 : isRevenue ? 15 : 10);
-    
-    const daysSinceLast = (now.getTime() - new Date(groupTxns[0].date).getTime()) / 86400000;
-    const finalConfidence = Math.round(Math.min(100, regularityScore - (daysSinceLast > (avgInterval * 1.5) ? 25 : 0)));
-
-    if (finalConfidence < minConfidence) continue;
-
-    const avgAmount = groupTxns.reduce((sum, t) => sum + t.amount, 0) / groupTxns.length;
-    const nextDate = new Date(groupTxns[0].date);
-    nextDate.setDate(nextDate.getDate() + Math.round(avgInterval));
-    
-    const behavioralProfile = getCategoryBehavioralProfileCached(firstTx.category);
-
-    allPredictions.push({
-      id: `pred-${normalizeDescription(firstTx.description)}-${avgAmount.toFixed(0)}`,
-      description: normalizeDescription(firstTx.description),
-      rawDescription: firstTx.description,
-      amount: avgAmount, // ICI : Garde le signe original
-      type: avgAmount > 0 ? 'revenue' : 'expense',
-      occurrences: groupTxns.length,
-      transactionIds: groupTxns.map(t => t.id),
-      intervalDays: Math.round(avgInterval),
-      lastDate: groupTxns[0].date,
-      nextExpectedDate: nextDate.toISOString(),
-      confidence: finalConfidence,
-      confidenceLevel: finalConfidence >= 90 ? 'high' : (finalConfidence >= 70 ? 'medium' : 'low'),
-      category: firstTx.category,
-      behavior,
-      behavioralAxis: behavioralProfile.axis,
-      compressibilityScore: behavioralProfile.compressibilityScore,
-      priority: behavioralProfile.priority
-    });
+  if (preCalculatedPatterns) {
+    // On utilise le résultat pré-calculé (venant du LeftPanel ou d'un memo)
+    detectionResult = preCalculatedPatterns;
+    console.log('[PROJECTION] Récurrences RÉUTILISÉES (pré-calculées) – gain de performance');
+  } else {
+    // Fallback : calcul normal (seulement si pas de cache)
+    const recSettings = settings?.recurringSettings || DEFAULT_RECURRING_SETTINGS;
+    detectionResult = detectRecurringPatterns(transactions, recSettings);
+    console.log('[PROJECTION] Récurrences CALCULÉES (pas de cache disponible)');
   }
 
-  // 4. CALCULS FINANCIERS FINAUX
+  // 3. FILTRAGE : On ne garde que ce qui tombe entre MAINTENANT et la FIN DU MOIS
+  const recurringPredictions: RecurringPrediction[] = [];
   let recurringRevenue = 0;
   let recurringExpenses = 0;
-  const filteredPredictions: RecurringPrediction[] = [];
 
-  for (const p of allPredictions) {
-    const nextDate = new Date(p.nextExpectedDate);
-    if (nextDate > now && nextDate <= endOfMonth) {
-      filteredPredictions.push(p);
-      if (p.amount > 0) recurringRevenue += p.amount;
-      else recurringExpenses += Math.abs(p.amount);
+  for (const pattern of detectionResult.patterns) {
+    if (!pattern.isActive) continue;
+
+    const nextDate = new Date(pattern.nextExpectedDate);
+    
+    // Marge de tolérance de 2 jours passés (pour les virements en attente de traitement bancaire)
+    const toleranceDate = new Date();
+    toleranceDate.setDate(toleranceDate.getDate() - 2);
+
+    // Si la date prévue est dans le futur proche (fin du mois)
+    if (nextDate >= toleranceDate && nextDate <= endOfMonthDate) {
+      
+      const behavior = getBehavior(pattern.category);
+      const behavioralProfile = getCategoryBehavioralProfileCached(pattern.category);
+
+      // Mapping vers le format RecurringPrediction
+      recurringPredictions.push({
+        id: pattern.id,
+        description: pattern.description, // Déjà normalisé par le moteur
+        rawDescription: pattern.transactions[0].description,
+        amount: pattern.averageAmount,
+        type: pattern.averageAmount > 0 ? 'revenue' : 'expense',
+        occurrences: pattern.transactions.length,
+        transactionIds: pattern.transactions.map(t => t.id),
+        intervalDays: Math.round(pattern.frequency),
+        lastDate: pattern.transactions[pattern.transactions.length - 1].date,
+        nextExpectedDate: pattern.nextExpectedDate.toISOString(),
+        confidence: pattern.confidence,
+        confidenceLevel: pattern.confidence >= 80 ? 'high' : (pattern.confidence >= 50 ? 'medium' : 'low'),
+        category: pattern.category,
+        behavior,
+        behavioralAxis: behavioralProfile.axis,
+        compressibilityScore: behavioralProfile.compressibilityScore,
+        priority: behavioralProfile.priority
+      });
+
+      // Calcul des totaux
+      if (pattern.averageAmount > 0) {
+        recurringRevenue += pattern.averageAmount;
+      } else {
+        recurringExpenses += Math.abs(pattern.averageAmount);
+      }
     }
   }
 
-  if (settings?.inflationFactor) recurringExpenses *= settings.inflationFactor;
+  // 4. APPLICATION DE L'INFLATION (Optionnel)
+  if (settings?.inflationFactor) {
+    recurringExpenses *= settings.inflationFactor;
+  }
 
   const totalRevenue = completedRevenue + recurringRevenue;
   const totalExpenses = completedExpenses + recurringExpenses;
   const projectedBalance = previousMonthEndBalance + totalRevenue - totalExpenses;
+
+  // Tri des prédictions par date
+  recurringPredictions.sort((a, b) => new Date(a.nextExpectedDate).getTime() - new Date(b.nextExpectedDate).getTime());
 
   return {
     projectedBalance,
@@ -250,7 +250,7 @@ export function calculateMonthEndProjection(
     details: {
       previousMonthEndBalance,
       pastTransactions: currentMonthTxns,
-      recurringPredictions: allPredictions.sort((a, b) => new Date(a.nextExpectedDate).getTime() - new Date(b.nextExpectedDate).getTime()),
+      recurringPredictions, // Contient maintenant MSA, Bouygues, etc.
       certainProjection: projectedBalance,
       completedRevenue,
       completedExpenses,
@@ -260,10 +260,11 @@ export function calculateMonthEndProjection(
   };
 }
 
-// Optimisation de la recherche de similarité (Levenshtein rapide)
+// --- UTILITAIRES CONSERVÉS POUR COMPATIBILITÉ UI ---
+
 function calculateStringSimilarity(str1: string, str2: string): number {
   if (str1 === str2) return 1;
-  if (Math.abs(str1.length - str2.length) > 3) return 0; // Court-circuit si trop différent
+  if (Math.abs(str1.length - str2.length) > 3) return 0;
 
   const s1 = str1.toLowerCase();
   const s2 = str2.toLowerCase();

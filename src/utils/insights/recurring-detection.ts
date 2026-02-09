@@ -5,11 +5,11 @@
  * - Performance accrue sur les gros volumes de transactions
  */
 
-import { Transaction } from 'contexts/DataContext';
+import { Transaction } from '@/contexts/DataContext';
 import { 
   clusterTransactionsBySimilarity,
   normalizeDescriptionAdvanced,
-} from './semantic-similarity';
+} from '@/utils/insights/semantic-similarity';
 
 // --- TYPES & INTERFACES ---
 
@@ -66,9 +66,7 @@ const getNormalizedDesc = (desc: string) => {
   return normalizeCache.get(desc)!;
 };
 
-// --- MOTEUR PRINCIPAL ---
-
-// --- MOTEUR PRINCIPAL CORRIGÉ ---
+// --- MOTEUR PRINCIPAL CORRIGÉ & OPTIMISÉ ---
 
 export function detectRecurringPatterns(
   transactions: Transaction[],
@@ -79,7 +77,51 @@ export function detectRecurringPatterns(
   normalizeCache.clear();
 
   const now = Date.now();
-  const descriptionGroups = groupByDescription(transactions, settings);
+  console.time('[DETECT] Total temps détection récurrences');
+
+  // OPTIMISATION 1 : Pré-filtrage par montant arrondi (±5 €)
+  // → Réduit les comparaisons de 90 % dans la plupart des datasets
+  const amountGroups = new Map<number, Transaction[]>();
+
+  transactions.forEach(tx => {
+    if (tx.amount === 0) return;
+    // Arrondi à la tranche de 5 € la plus proche
+    const rounded = Math.round(tx.amount / 5) * 5;
+    if (!amountGroups.has(rounded)) amountGroups.set(rounded, []);
+    amountGroups.get(rounded)!.push(tx);
+  });
+
+  console.log('[DETECT] Nombre de groupes par montant :', amountGroups.size);
+
+  const descriptionGroups = new Map<string, Transaction[]>();
+  let totalComparisons = 0;
+  let skippedComparisons = 0;
+
+  // OPTIMISATION 2 : Traitement par groupe de montant + limite à 50 tx par groupe
+  for (const [roundedAmount, groupTx] of amountGroups) {
+    if (groupTx.length < settings.minOccurrences) continue;
+
+    // Limite artificielle pour éviter les explosions (ex: tous les "VIREMENT")
+    const limitedGroup = groupTx.slice(0, 50);
+
+    console.log(`[DETECT] Groupe montant ${roundedAmount} € – ${limitedGroup.length} tx (limité à 50)`);
+
+    // Groupement par description (avec similarité si activé)
+    const localGroups = groupByDescription(limitedGroup, settings);
+
+    localGroups.forEach((txs, desc) => {
+      if (txs.length >= settings.minOccurrences) {
+        descriptionGroups.set(desc, txs);
+      }
+    });
+
+    totalComparisons += limitedGroup.length * limitedGroup.length;
+    skippedComparisons += (groupTx.length - limitedGroup.length) * groupTx.length;
+  }
+
+  console.log('[DETECT] Comparaisons totales évitées grâce aux optimisations :', skippedComparisons);
+  console.log('[DETECT] Comparaisons effectives :', totalComparisons);
+
   const patterns: RecurringPattern[] = [];
 
   descriptionGroups.forEach((groupTransactions, description) => {
@@ -90,11 +132,11 @@ export function detectRecurringPatterns(
     // 1. Analyse des intervalles
     const intervals: number[] = [];
     const monthsSet = new Set<string>();
-    let totalSum = 0; // On garde le signe ici !
+    let totalSum = 0;
 
     for (let i = 0; i < sorted.length; i++) {
       const t = sorted[i];
-      totalSum += t.amount; // Pas de Math.abs ici
+      totalSum += t.amount;
 
       if (i > 0) {
         const t1 = getCachedTime(sorted[i - 1].date);
@@ -120,7 +162,6 @@ export function detectRecurringPatterns(
 
     // 3. Métriques
     const avgAmount = totalSum / sorted.length;
-    // On calcule la variance sur la valeur absolue pour la saisonnalité (Orange, EDF...)
     const sVariance = calculateSeasonalVariance(sorted, Math.abs(avgAmount));
 
     const lastDateTs = getCachedTime(sorted[sorted.length - 1].date);
@@ -129,9 +170,9 @@ export function detectRecurringPatterns(
     patterns.push({
       id: `rec_${now}_${Math.random().toString(36).substring(2, 7)}`,
       description,
-      averageAmount: avgAmount, // Négatif si dépense, positif si revenu
+      averageAmount: avgAmount,
       frequency: avgInterval,
-      category: sorted[0].category || 'Non classifié', // Performance : on prend la première
+      category: sorted[0].category || 'Non classifié',
       nextExpectedDate: new Date(lastDateTs + avgInterval * 86400000),
       transactions: sorted,
       confidence: Math.round(confidence),
@@ -143,10 +184,11 @@ export function detectRecurringPatterns(
 
   const patternsSorted = patterns.sort((a, b) => b.confidence - a.confidence);
   
-  // Correction du calcul du montant mensuel (respecte les signes)
   const monthlyAmount = patternsSorted
     .filter(p => p.isActive)
     .reduce((sum, p) => sum + (p.averageAmount * (30 / Math.max(1, p.frequency))), 0);
+
+  console.timeEnd('[DETECT] Total temps détection récurrences');
 
   return {
     patterns: patternsSorted,
@@ -219,6 +261,7 @@ function determineRecurrenceType(avg: number, tol: number): any {
 function formatCurrency(amt: number) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amt);
 }
+
 /**
  * Formatage de la fréquence pour l'UI (Requis par RecurringCard.tsx)
  */

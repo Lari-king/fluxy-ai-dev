@@ -3,8 +3,8 @@
  * Génération automatique d'insights textuels à partir des analyses
  */
 
-import type { ChangeAlert } from './change-detection';
-import type { ConcentrationPattern } from './heatmap-builder';
+import type { ChangeAlert } from '@/utils/insights/change-detection';
+import type { ConcentrationPattern } from '@/utils/insights/heatmap-builder';
 
 export interface GeneratedInsight {
   id: string;

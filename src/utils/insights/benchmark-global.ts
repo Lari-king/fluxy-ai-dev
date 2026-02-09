@@ -7,7 +7,7 @@
  * Ce fichier doit être importé dans App.tsx pour être disponible.
  */
 
-import { quickBenchmark, testThresholds } from './quick-benchmark';
+import { quickBenchmark, testThresholds } from '@/utils/insights/quick-benchmark';
 
 // Exposer les fonctions dans window pour accès console
 if (typeof window !== 'undefined') {

@@ -1,5 +1,5 @@
 import { Budget, BudgetRule } from '../../types/budget';
-import { Transaction } from './csv-parser';
+import { Transaction } from '@/utils/csv-parser';
 
 /**
  * Check if a transaction matches a budget rule

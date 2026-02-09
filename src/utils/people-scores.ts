@@ -18,12 +18,12 @@ import {
     TimeBenefit,
     Trend,
     DependanceLevel,
-  } from '../../types/people';
+  } from '../types/people';
   import {
     LIBERTE_SCORE_CONFIG,
     RESILIENCE_SCORE_CONFIG,
     DEFAULT_MONTHLY_INCOME,
-  } from '../constants/people-config';
+  } from '@/constants/people-config';
   
   // ========================================
   // 💰 SCORE DE LIBERTÉ FINANCIÈRE

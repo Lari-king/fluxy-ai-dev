@@ -5,14 +5,14 @@
  * 
  * Utilisation dans la console (F12) :
  * 
- * import { quickBenchmark } from './src/utils/insights/quick-benchmark';
- * import { useData } from './contexts/DataContext';
+ * import { quickBenchmark } from '@/utils/insights/src/utils/insights/quick-benchmark';
+ * import { useData } from '@/utils/insights/contexts/DataContext';
  * const { transactions } = useData();
  * quickBenchmark(transactions);
  */
 
-import { Transaction } from 'contexts/DataContext';
-import { detectRecurringPatterns, RecurringSettings } from './recurring-detection';
+import { Transaction } from '@/contexts/DataContext';
+import { detectRecurringPatterns, RecurringSettings } from '@/utils/insights/recurring-detection';
 
 export interface BenchmarkResult {
   classic: {

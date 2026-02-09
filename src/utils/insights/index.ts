@@ -10,10 +10,10 @@
  * - Détection de dépenses récurrentes (pattern matching)
  */
 
-export * from './statistics';
-export * from './projection';
-export * from './anomaly-detection';
-export * from './recurring-detection';
+export * from '@/utils/insights/statistics';
+export * from '@/utils/insights/projection';
+export * from '@/utils/insights/anomaly-detection';
+export * from '@/utils/insights/recurring-detection';
 
 // Types partagés
 export interface Transaction {

@@ -1,17 +1,23 @@
 /**
- * Memory Monitor - Debug tool for tracking memory leaks
- * 
- * Usage in development:
- * - window.__memoryMonitor.status() - Get current stats
- * - window.__memoryMonitor.startTracking() - Start tracking component mounts
- * - window.__memoryMonitor.stopTracking() - Stop tracking
- * - window.__memoryMonitor.report() - Generate detailed report
+ * 🛠️ MEMORY MONITOR - VERSION R.A.S.P STABILISÉE
+ * Outil de diagnostic pour détecter les fuites de mémoire et les boucles infinies d'API.
+ * * Usage en console :
+ * - window.__memoryMonitor.status()      -> Stats rapides
+ * - window.__memoryMonitor.startTracking() -> Activer la surveillance
+ * - window.__memoryMonitor.report()      -> Rapport détaillé
+ * - window.__memoryMonitor.checkLeaks()  -> Analyse automatique des fuites
  */
+
+interface ApiCallRecord {
+  timestamp: number;
+  endpoint: string;
+  duration?: number;
+}
 
 class MemoryMonitor {
   private componentMounts: Map<string, number> = new Map();
   private eventListeners: Map<string, number> = new Map();
-  private apiCalls: Array<{ timestamp: number; endpoint: string; duration?: number }> = [];
+  private apiCalls: ApiCallRecord[] = [];
   private tracking = false;
   private maxApiCallsHistory = 100;
 
@@ -24,7 +30,7 @@ class MemoryMonitor {
     const count = this.componentMounts.get(componentName) || 0;
     this.componentMounts.set(componentName, count + 1);
     
-    console.log(`📦 Mount: ${componentName} (total: ${count + 1})`);
+    console.log(`📦 Mount: ${componentName} (total active: ${count + 1})`);
   }
 
   /**
@@ -38,7 +44,7 @@ class MemoryMonitor {
       this.componentMounts.set(componentName, count - 1);
       console.log(`📤 Unmount: ${componentName} (remaining: ${count - 1})`);
     } else {
-      console.warn(`⚠️ Unmount called for ${componentName} but no mount recorded!`);
+      console.warn(`⚠️ Unmount appelé pour ${componentName} sans mount préalable !`);
     }
   }
 
@@ -52,31 +58,31 @@ class MemoryMonitor {
     
     if (action === 'add') {
       this.eventListeners.set(eventName, count + 1);
-      console.log(`🎧 Listener added: ${eventName} (total: ${count + 1})`);
+      console.log(`🎧 Listener ajouté: ${eventName} (total: ${count + 1})`);
     } else {
       if (count > 0) {
         this.eventListeners.set(eventName, count - 1);
-        console.log(`🔇 Listener removed: ${eventName} (remaining: ${count - 1})`);
+        console.log(`🔇 Listener retiré: ${eventName} (restant: ${count - 1})`);
       } else {
-        console.warn(`⚠️ Listener remove called for ${eventName} but none registered!`);
+        console.warn(`⚠️ Retrait de listener pour ${eventName} mais aucun n'est enregistré !`);
       }
     }
   }
 
   /**
-   * Track API call
+   * Track API call avec gestion de la durée (Correction du Type Error)
    */
   trackApiCall(endpoint: string): { end: () => void } {
     if (!this.tracking) return { end: () => {} };
     
     const timestamp = Date.now();
-    const call = { timestamp, endpoint };
+    // On crée l'objet avec le type explicite pour autoriser l'ajout de duration plus tard
+    const call: ApiCallRecord = { timestamp, endpoint };
     
     this.apiCalls.push(call);
     
-    // Keep only recent calls
     if (this.apiCalls.length > this.maxApiCallsHistory) {
-      this.apiCalls = this.apiCalls.slice(-this.maxApiCallsHistory);
+      this.apiCalls.shift(); // Plus performant que slice(-N) pour un singleton
     }
     
     console.log(`🌐 API Call: ${endpoint}`);
@@ -84,8 +90,8 @@ class MemoryMonitor {
     return {
       end: () => {
         const duration = Date.now() - timestamp;
-        call.duration = duration;
-        console.log(`✅ API Complete: ${endpoint} (${duration}ms)`);
+        call.duration = duration; // ✅ Plus d'erreur TS ici
+        console.log(`✅ API Terminée: ${endpoint} (${duration}ms)`);
       }
     };
   }
@@ -93,7 +99,7 @@ class MemoryMonitor {
   /**
    * Get API call statistics
    */
-  getApiStats(): { total: number; last10s: number; slowest: any; endpoints: Record<string, number> } {
+  getApiStats() {
     const now = Date.now();
     const last10s = this.apiCalls.filter(c => now - c.timestamp < 10000).length;
     
@@ -102,163 +108,102 @@ class MemoryMonitor {
       endpoints[call.endpoint] = (endpoints[call.endpoint] || 0) + 1;
     });
     
-    const slowest = this.apiCalls
-      .filter(c => c.duration)
+    const slowest = [...this.apiCalls]
+      .filter(c => c.duration !== undefined)
       .sort((a, b) => (b.duration || 0) - (a.duration || 0))
       .slice(0, 5);
     
     return { total: this.apiCalls.length, last10s, slowest, endpoints };
   }
 
-  /**
-   * Start tracking
-   */
   startTracking(): void {
     this.tracking = true;
-    console.log('🔍 Memory Monitor: Tracking started');
+    console.log('🔍 Memory Monitor: ACTIVÉ');
   }
 
-  /**
-   * Stop tracking
-   */
   stopTracking(): void {
     this.tracking = false;
-    console.log('🛑 Memory Monitor: Tracking stopped');
+    console.log('🛑 Memory Monitor: DÉSACTIVÉ');
   }
 
   /**
-   * Get current status
+   * Affichage formatté dans la console
    */
   status(): void {
-    console.log('\n📊 MEMORY MONITOR STATUS');
-    console.log('========================\n');
+    console.log('\n📊 --- ÉTAT DU MONITEUR DE MÉMOIRE ---');
     
-    console.log('🏗️ Component Mounts:');
+    console.log('\n🏗️ Composants actifs :');
     if (this.componentMounts.size === 0) {
-      console.log('  No components tracked');
+      console.log('  Aucun');
     } else {
       this.componentMounts.forEach((count, name) => {
-        const status = count > 1 ? '⚠️ MULTIPLE' : count === 1 ? '✅ OK' : '❌ UNMOUNTED';
-        console.log(`  ${status} ${name}: ${count}`);
+        const prefix = count > 1 ? '⚠️ [FUITE POSSIBLE]' : '✅';
+        if (count > 0) console.log(`  ${prefix} ${name}: ${count} instance(s)`);
       });
     }
     
-    console.log('\n🎧 Event Listeners:');
-    if (this.eventListeners.size === 0) {
-      console.log('  No listeners tracked');
-    } else {
-      this.eventListeners.forEach((count, name) => {
-        const status = count > 5 ? '⚠️ HIGH' : count > 0 ? '✅ OK' : '❌ NONE';
-        console.log(`  ${status} ${name}: ${count}`);
-      });
-    }
-    
-    console.log('\n🌐 API Calls:');
-    const apiStats = this.getApiStats();
-    console.log(`  Total tracked: ${apiStats.total}`);
-    console.log(`  Last 10s: ${apiStats.last10s}`);
-    
-    if (apiStats.last10s > 10) {
-      console.warn('  ⚠️ HIGH API ACTIVITY - Potential issue!');
-    }
-    
-    console.log('\n📈 Most Called Endpoints:');
-    const sortedEndpoints = Object.entries(apiStats.endpoints)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5);
-    
-    sortedEndpoints.forEach(([endpoint, count]) => {
-      console.log(`  ${endpoint}: ${count}`);
+    console.log('\n🎧 Listeners actifs :');
+    this.eventListeners.forEach((count, name) => {
+      if (count > 0) console.log(`  ${count > 5 ? '⚠️' : '✅'} ${name}: ${count}`);
     });
     
-    console.log('\n⏱️ Slowest API Calls:');
-    if (apiStats.slowest.length === 0) {
-      console.log('  No completed calls');
-    } else {
-      apiStats.slowest.forEach((call: any) => {
-        console.log(`  ${call.endpoint}: ${call.duration}ms`);
-      });
-    }
+    const stats = this.getApiStats();
+    console.log(`\n🌐 API : ${stats.last10s} appels/10s (Total historisé: ${stats.total})`);
     
-    console.log('\n========================\n');
+    if (stats.slowest.length > 0) {
+      console.log('⏱️ Plus lents :');
+      stats.slowest.forEach(s => console.log(`  - ${s.endpoint}: ${s.duration}ms`));
+    }
+    console.log('\n--------------------------------------\n');
   }
 
-  /**
-   * Generate detailed report
-   */
   report(): string {
-    const lines: string[] = [];
-    
-    lines.push('MEMORY MONITOR REPORT');
-    lines.push('====================\n');
-    
-    lines.push('Components:');
+    const lines = ['--- RAPPORT MÉMOIRE ---'];
     this.componentMounts.forEach((count, name) => {
-      lines.push(`  ${name}: ${count} instance(s)`);
+      if (count > 0) lines.push(`COMP: ${name} -> ${count}`);
     });
-    
-    lines.push('\nEvent Listeners:');
-    this.eventListeners.forEach((count, name) => {
-      lines.push(`  ${name}: ${count} listener(s)`);
-    });
-    
-    const apiStats = this.getApiStats();
-    lines.push(`\nAPI Calls: ${apiStats.total} total, ${apiStats.last10s} in last 10s`);
-    
+    const stats = this.getApiStats();
+    lines.push(`API_10S: ${stats.last10s}`);
     return lines.join('\n');
   }
 
-  /**
-   * Reset all tracking data
-   */
   reset(): void {
     this.componentMounts.clear();
     this.eventListeners.clear();
     this.apiCalls = [];
-    console.log('🔄 Memory Monitor: All data reset');
+    console.log('🔄 Données réinitialisées');
   }
 
   /**
-   * Check for potential memory leaks
+   * Analyse automatique
    */
   checkLeaks(): { hasLeaks: boolean; issues: string[] } {
     const issues: string[] = [];
     
-    // Check for components that mounted but never unmounted
     this.componentMounts.forEach((count, name) => {
-      if (count > 3) {
-        issues.push(`Component "${name}" has ${count} instances - possible leak`);
-      }
+      if (count > 3) issues.push(`Fuite probable : ${name} a ${count} instances actives.`);
     });
     
-    // Check for excessive event listeners
     this.eventListeners.forEach((count, name) => {
-      if (count > 10) {
-        issues.push(`Event "${name}" has ${count} listeners - possible leak`);
-      }
+      if (count > 10) issues.push(`Trop de listeners : ${name} (${count})`);
     });
     
-    // Check for excessive API calls
-    const apiStats = this.getApiStats();
-    if (apiStats.last10s > 20) {
-      issues.push(`${apiStats.last10s} API calls in last 10s - too many!`);
-    }
-    
+    const stats = this.getApiStats();
+    if (stats.last10s > 20) issues.push(`Boucle API suspecte : ${stats.last10s} appels en 10s`);
+
     if (issues.length > 0) {
-      console.warn('⚠️ POTENTIAL MEMORY LEAKS DETECTED:');
-      issues.forEach(issue => console.warn(`  - ${issue}`));
+      console.warn('🚨 PROBLÈMES DÉTECTÉS :', issues);
     } else {
-      console.log('✅ No obvious memory leaks detected');
+      console.log('✅ Santé du système : Optimale');
     }
     
     return { hasLeaks: issues.length > 0, issues };
   }
 }
 
-// Singleton instance
 export const memoryMonitor = new MemoryMonitor();
 
-// Expose to window for debugging
+// Exposition globale
 if (typeof window !== 'undefined') {
   (window as any).__memoryMonitor = {
     status: () => memoryMonitor.status(),
@@ -268,6 +213,4 @@ if (typeof window !== 'undefined') {
     reset: () => memoryMonitor.reset(),
     checkLeaks: () => memoryMonitor.checkLeaks(),
   };
-  
-  console.log('💡 Memory Monitor available: window.__memoryMonitor');
 }

@@ -1,0 +1,1327 @@
+{
+  "src/App.tsx": [
+    "react",
+    "./contexts/AuthContext",
+    "./contexts/ThemeContext",
+    "./contexts/DataContext",
+    "./contexts/StorageContext",
+    "./contexts/TransactionSettingsContext",
+    "./contexts/RulesContext",
+    "./components/pages/HomePage",
+    "./components/auth/LoginPage",
+    "./components/layout/AppLayout",
+    "./components/pages/Dashboard",
+    "./components/pages/Transactions",
+    "./components/pages/Budgets",
+    "./components/pages/Goals",
+    "./components/pages/Patrimoine",
+    "./components/pages/Simulator",
+    "./components/pages/People",
+    "./components/pages/FamilyOffice",
+    "./components/pages/Settings",
+    "./components/pages/UltraInsights",
+    "./components/ui/sonner"
+  ],
+  "src/components/NavigationDrawer.tsx": [
+    "react",
+    "lucide-react"
+  ],
+  "src/components/auth/LoginPage.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/button",
+    "../ui/input",
+    "../ui/label",
+    "../ui/card",
+    "../../contexts/AuthContext",
+    "lucide-react",
+    "../ui/alert"
+  ],
+  "src/components/budgets/BudgetFormDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/button",
+    "../ui/input",
+    "../ui/label",
+    "../ui/select",
+    "../../types/budget",
+    "./BudgetRulesEditor"
+  ],
+  "src/components/budgets/BudgetRulesEditor.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/button",
+    "../ui/label",
+    "../ui/select",
+    "../ui/input",
+    "../../types/budget"
+  ],
+  "src/components/budgets/BudgetTransactionsDialog.tsx": [
+    "framer-motion",
+    "../ui/dialog",
+    "../../types/budget",
+    "../../src/utils/csv-parser",
+    "../../src/utils/budget-rules",
+    "lucide-react",
+    "../ui/badge",
+    "../ui/scroll-area",
+    "../ui/tooltip",
+    "../../src/utils/format"
+  ],
+  "src/components/dashboard/AllocationRing.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "lucide-react",
+    "../ui/button",
+    "../ui/tooltip"
+  ],
+  "src/components/dashboard/BalanceRecovery.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "lucide-react",
+    "../ui/tooltip",
+    "../ui/slider",
+    "../ui/badge",
+    "../ui/button"
+  ],
+  "src/components/dashboard/CategoryBreakdown.tsx": [
+    "react",
+    "recharts",
+    "../ui/card",
+    "../../contexts/DataContext",
+    "../../src/utils/format",
+    "../ui/skeleton",
+    "lucide-react"
+  ],
+  "src/components/dashboard/DetailedBarChart.tsx": [
+    "react",
+    "recharts",
+    "../ui/card",
+    "../ui/skeleton",
+    "../../src/utils/format",
+    "../../contexts/DataContext"
+  ],
+  "src/components/dashboard/EnhancedFinancialWidget.tsx": [
+    "react",
+    "../../hooks/useFinancialKPIs",
+    "../../hooks/useChartData",
+    "./KPIMetric",
+    "./MiniLineChart",
+    "lucide-react",
+    "../ui/card",
+    "../ui/skeleton",
+    "./CategoryBreakdown",
+    "./DetailedBarChart",
+    "./PeriodSelector"
+  ],
+  "src/components/dashboard/ExportCSVButton.tsx": [
+    "react",
+    "lucide-react",
+    "../ui/button"
+  ],
+  "src/components/dashboard/GoalsProgress.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "../ui/progress",
+    "lucide-react",
+    "../ui/button"
+  ],
+  "src/components/dashboard/KPIMetric.tsx": [
+    "react",
+    "lucide-react",
+    "../ui/card"
+  ],
+  "src/components/dashboard/MillionaireCountdown.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "lucide-react",
+    "../../src/utils/csv-parser",
+    "../../src/utils/transaction-helpers"
+  ],
+  "src/components/dashboard/MiniLineChart.tsx": [
+    "react",
+    "recharts",
+    "../ui/card",
+    "../../src/utils/format"
+  ],
+  "src/components/dashboard/NetWorthProjection.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "../ui/tabs",
+    "recharts",
+    "lucide-react"
+  ],
+  "src/components/dashboard/OverdraftIndicator.tsx": [
+    "framer-motion",
+    "../ui/card",
+    "lucide-react"
+  ],
+  "src/components/dashboard/PeriodSelector.tsx": [
+    "react",
+    "../ui/button"
+  ],
+  "src/components/dashboard/QuickStats.tsx": [
+    "framer-motion",
+    "../ui/card",
+    "lucide-react"
+  ],
+  "src/components/dashboard/SavingsGoal.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "lucide-react",
+    "../ui/tooltip",
+    "../ui/slider",
+    "../ui/badge",
+    "../ui/button"
+  ],
+  "src/components/dashboard/TopPeople.tsx": [
+    "react",
+    "framer-motion",
+    "../ui/card",
+    "lucide-react",
+    "../ui/button"
+  ],
+  "src/components/figma/ImageWithFallback.tsx": [
+    "react"
+  ],
+  "src/components/goals/GoalFormDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/button",
+    "../ui/input",
+    "../ui/label",
+    "../ui/textarea",
+    "../../contexts/DataContext"
+  ],
+  "src/components/insights/EmptyStateUltraInsights.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/insights/HabitsHeatmap.tsx": [
+    "react",
+    "framer-motion",
+    "../../src/utils/insights/heatmap-builder"
+  ],
+  "src/components/insights/InsightCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../src/utils/insights/insights-generator"
+  ],
+  "src/components/insights/PeriodComparison.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "recharts",
+    "../../src/utils/insights/period-comparator",
+    "../../src/utils/csv-parser",
+    "../../contexts/DataContext"
+  ],
+  "src/components/insights/TimelineEvolution.tsx": [
+    "react",
+    "framer-motion",
+    "recharts",
+    "lucide-react",
+    "../../src/utils/insights/change-detection"
+  ],
+  "src/components/insights/UltraInsightsActivation.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/insights/UltraInsightsBadge.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/insights/UltraInsightsGuide.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/layout/AppLayout.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/AuthContext",
+    "../../contexts/ThemeContext",
+    "../../src/utils/performance-monitor",
+    "../NavigationDrawer",
+    "lucide-react",
+    "../ui/button",
+    "../ui/avatar",
+    "../ui/dropdown-menu",
+    "../ui/utils"
+  ],
+  "src/components/maslow/MaslowPyramid.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../src/utils/maslow"
+  ],
+  "src/components/pages/Budgets.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../contexts/AuthContext",
+    "../../contexts/DataContext",
+    "../ui/button",
+    "../ui/card",
+    "sonner",
+    "../../src/utils/events",
+    "../budgets/BudgetFormDialog",
+    "../budgets/BudgetTransactionsDialog"
+  ],
+  "src/components/pages/Dashboard.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/AuthContext",
+    "../../contexts/DataContext",
+    "lucide-react",
+    "../ui/card",
+    "../ui/progress",
+    "../ui/badge",
+    "../ui/tooltip",
+    "../dashboard/GoalsProgress",
+    "../dashboard/MillionaireCountdown",
+    "../dashboard/OverdraftIndicator",
+    "../dashboard/AllocationRing",
+    "../dashboard/TopPeople",
+    "../../src/utils/budget-rules",
+    "../../src/utils/transaction-helpers"
+  ],
+  "src/components/pages/FamilyOffice.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/AuthContext",
+    "../../contexts/DataContext",
+    "lucide-react",
+    "../ui/button",
+    "../ui/card",
+    "../ui/badge",
+    "../ui/progress",
+    "sonner",
+    "../../src/utils/format"
+  ],
+  "src/components/pages/Goals.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "sonner",
+    "../ui/button",
+    "../ui/progress",
+    "../goals/GoalFormDialog",
+    "../../contexts/DataContext"
+  ],
+  "src/components/pages/HomePage.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/pages/ModernSettings.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/input",
+    "../ui/label",
+    "../ui/badge",
+    "../ui/select",
+    "sonner",
+    "../../contexts/ThemeContext",
+    "../settings/TransactionSettingsTab",
+    "../settings/RulesSettingsTab",
+    "../settings/CategoriesManagementTab",
+    "../settings/DataManagementTab"
+  ],
+  "src/components/pages/Patrimoine.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/AuthContext",
+    "../../contexts/DataContext",
+    "recharts",
+    "lucide-react",
+    "../ui/button",
+    "sonner",
+    "../patrimoine/AssetFormDialog"
+  ],
+  "src/components/pages/People.tsx": [
+    "react",
+    "framer-motion",
+    "contexts/AuthContext",
+    "contexts/DataContext",
+    "lucide-react",
+    "components/ui/button",
+    "sonner",
+    "src/utils/people-enrichment",
+    "types/people",
+    "components/people/PersonForm",
+    "components/relations/RelationsDashboard",
+    "components/relations/RelationDetail",
+    "components/relations/RelationTopology",
+    "src/utils/events"
+  ],
+  "src/components/pages/Settings.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "sonner",
+    "../../contexts/ThemeContext",
+    "../settings/TransactionSettingsTab",
+    "../settings/RulesSettingsTab",
+    "../settings/CategoriesManagementTab",
+    "../settings/DataManagementTab",
+    "../settings/StorageSettingsTab"
+  ],
+  "src/components/pages/Simulator.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/AuthContext",
+    "lucide-react",
+    "../ui/button",
+    "sonner",
+    "../simulator/ScenarioFormDialog",
+    "recharts"
+  ],
+  "src/components/pages/Transactions.tsx": [
+    "react",
+    "framer-motion",
+    "sonner",
+    "lucide-react",
+    "../../contexts/AuthContext",
+    "../../contexts/DataContext",
+    "../../src/utils/csv-parser",
+    "../../src/utils/categorization",
+    "../../src/utils/categories",
+    "../../src/utils/stringUtils",
+    "../../src/utils/events",
+    "../../src/utils/insights/projection",
+    "../transactions/insights/LeftPanelInsights",
+    "../transactions/RightPanelDetails",
+    "../transactions/CommandBar",
+    "../transactions/modals/ImportModal",
+    "../transactions/modals/TransactionFormDialog",
+    "../transactions/modals/SplitTransactionDialog",
+    "../transactions/view/TransactionTable",
+    "../transactions/components/PaginationControls"
+  ],
+  "src/components/pages/UltraInsights.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../contexts/DataContext",
+    "../insights/UltraInsightsActivation",
+    "../insights/TimelineEvolution",
+    "../insights/HabitsHeatmap",
+    "../insights/InsightCard",
+    "../insights/PeriodComparison",
+    "../insights/EmptyStateUltraInsights",
+    "../insights/UltraInsightsGuide",
+    "../../src/utils/insights/change-detection",
+    "../../src/utils/insights/heatmap-builder",
+    "../../src/utils/insights/insights-generator",
+    "../../src/utils/insights/period-comparator"
+  ],
+  "src/components/patrimoine/AssetFormDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/button",
+    "../ui/input",
+    "../ui/label",
+    "../ui/textarea"
+  ],
+  "src/components/people/PersonCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/avatar",
+    "@/types/people"
+  ],
+  "src/components/people/PersonForm.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/input",
+    "components/ui/label",
+    "components/ui/select",
+    "components/ui/textarea",
+    "components/ui/avatar",
+    "components/ui/tabs",
+    "components/ui/button",
+    "@/types/people"
+  ],
+  "src/components/relations/RelationDetail.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/avatar",
+    "components/ui/button",
+    "types/people",
+    "contexts/DataContext",
+    "sonner",
+    "contexts/DataContext",
+    "src/utils/events"
+  ],
+  "src/components/relations/RelationTopology.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/avatar",
+    "types/people",
+    "components/ui/input",
+    "components/ui/button",
+    "components/ui/badge"
+  ],
+  "src/components/relations/RelationsDashboard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/avatar",
+    "types/people",
+    "contexts/DataContext",
+    "components/people/PersonCard",
+    "components/ui/button",
+    "components/ui/input",
+    "sonner",
+    "contexts/DataContext",
+    "src/utils/events"
+  ],
+  "src/components/relations/ScoreCard.tsx": [
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/settings/CSVPreviewModal.tsx": [
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/settings/CategoriesManagementTab.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../contexts/DataContext",
+    "sonner",
+    "../../src/utils/categories",
+    "../maslow/MaslowPyramid",
+    "./CSVPreviewModal",
+    "./MassActionMenu"
+  ],
+  "src/components/settings/DataManagementTab.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../contexts/DataContext",
+    "sonner"
+  ],
+  "src/components/settings/MassActionMenu.tsx": [
+    "framer-motion",
+    "lucide-react",
+    "react"
+  ],
+  "src/components/settings/RuleEditorModal.tsx": [
+    "react",
+    "framer-motion",
+    "../../contexts/RulesContext",
+    "../../types/rules",
+    "sonner",
+    "lucide-react",
+    "./RuleTypeSelector",
+    "./rule-forms/CategoryBudgetForm",
+    "./rule-forms/MerchantFrequencyForm",
+    "./rule-forms/MerchantAmountForm",
+    "./rule-forms/KeywordDetectionForm",
+    "./rule-forms/TimeRangeForm",
+    "./rule-forms/RecurringVarianceForm",
+    "./rule-forms/PersonFlowForm"
+  ],
+  "src/components/settings/RuleTypeSelector.tsx": [
+    "react",
+    "framer-motion",
+    "../../types/rules",
+    "lucide-react"
+  ],
+  "src/components/settings/RulesCenterPanel.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../types/rules",
+    "./RuleTypeSelector",
+    "./rule-forms/CategoryBudgetForm",
+    "./rule-forms/MerchantFrequencyForm",
+    "./rule-forms/MerchantAmountForm",
+    "./rule-forms/KeywordDetectionForm",
+    "./rule-forms/TimeRangeForm",
+    "./rule-forms/RecurringVarianceForm",
+    "./rule-forms/PersonFlowForm"
+  ],
+  "src/components/settings/RulesCommandBar.tsx": [
+    "react",
+    "lucide-react"
+  ],
+  "src/components/settings/RulesLeftPanel.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../types/rules"
+  ],
+  "src/components/settings/RulesRightPanel.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../types/rules",
+    "../../contexts/DataContext",
+    "../../src/utils/format",
+    "../../src/utils/ruleEngine",
+    "../../hooks/useDebouncedValue"
+  ],
+  "src/components/settings/RulesSettingsTab.tsx": [
+    "react",
+    "../../contexts/RulesContext",
+    "../../types/rules",
+    "sonner",
+    "./RulesCommandBar",
+    "./RulesLeftPanel",
+    "./RulesCenterPanel",
+    "./RulesRightPanel"
+  ],
+  "src/components/settings/StorageSettingsTab.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "sonner",
+    "../../src/services/storage",
+    "../../contexts/AuthContext"
+  ],
+  "src/components/settings/TransactionSettingsTab.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "sonner",
+    "../../contexts/TransactionSettingsContext"
+  ],
+  "src/components/settings/rule-forms/CategoryBudgetForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../../contexts/DataContext"
+  ],
+  "src/components/settings/rule-forms/KeywordDetectionForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/badge",
+    "../../ui/switch",
+    "lucide-react"
+  ],
+  "src/components/settings/rule-forms/MerchantAmountForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/select",
+    "../../ui/badge",
+    "lucide-react"
+  ],
+  "src/components/settings/rule-forms/MerchantFrequencyForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/select",
+    "../../ui/badge",
+    "lucide-react"
+  ],
+  "src/components/settings/rule-forms/PersonFlowForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/switch",
+    "lucide-react"
+  ],
+  "src/components/settings/rule-forms/RecurringVarianceForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/switch"
+  ],
+  "src/components/settings/rule-forms/TimeRangeForm.tsx": [
+    "react",
+    "../../../types/rules",
+    "../../ui/label",
+    "../../ui/input",
+    "../../ui/select",
+    "../../ui/badge"
+  ],
+  "src/components/simulator/ScenarioFormDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../ui/button",
+    "../ui/input",
+    "../ui/label",
+    "../ui/textarea"
+  ],
+  "src/components/transactions/CommandBar.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/transactions/RightPanelDetails.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../contexts/DataContext",
+    "../../contexts/RulesContext",
+    "../../src/utils/ruleEngine",
+    "../../src/utils/format",
+    "../../types/rules"
+  ],
+  "src/components/transactions/components/PaginationControls.tsx": [
+    "react",
+    "lucide-react"
+  ],
+  "src/components/transactions/components/PersonSelector.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../ui/input",
+    "../../ui/avatar",
+    "../../ui/badge"
+  ],
+  "src/components/transactions/components/TransactionGroupCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../src/utils/csv-parser",
+    "../../ui/button",
+    "../../ui/avatar",
+    "../../ui/badge",
+    "../../transactions/modals/TransactionFormDialog",
+    "../../../src/utils/transaction-helpers",
+    "../../../src/utils/recurring-group-helpers"
+  ],
+  "src/components/transactions/insights/LeftPanelInsights.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "contexts/DataContext",
+    "contexts/RulesContext",
+    "contexts/TransactionSettingsContext",
+    "src/utils/insights/projection",
+    "src/utils/insights/anomaly-detection",
+    "src/utils/insights/recurring-detection",
+    "src/utils/transaction-parser",
+    "@/hooks/useRuleViolationsCache",
+    "@/hooks/useRecentTransactions",
+    "@/hooks/useDebouncedValue",
+    "./cards/ProjectionCard",
+    "./cards/RecurringCard",
+    "./cards/AnomaliesCard",
+    "./cards/ViolationsCard",
+    "./ProjectionDetailsModal"
+  ],
+  "src/components/transactions/insights/ProjectionDetailsModal.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../contexts/DataContext",
+    "../../../src/utils/format",
+    "../../../src/utils/transaction-parser",
+    "../../../src/utils/insights/projection"
+  ],
+  "src/components/transactions/insights/cards/AnomaliesCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../../src/utils/format",
+    "../../../../src/utils/transaction-parser",
+    "../../../../src/utils/insights/anomaly-detection"
+  ],
+  "src/components/transactions/insights/cards/DailyGoalCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../../src/utils/format",
+    "../../../../src/utils/insights/projection"
+  ],
+  "src/components/transactions/insights/cards/ProjectionCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../../src/utils/format"
+  ],
+  "src/components/transactions/insights/cards/RecurringCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "components/ui/button",
+    "src/utils/format",
+    "src/utils/insights/recurring-detection",
+    "src/utils/transaction-parser",
+    "src/utils/insights/recurring-detection",
+    "types/people"
+  ],
+  "src/components/transactions/insights/cards/StatsCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react"
+  ],
+  "src/components/transactions/insights/cards/TopCategoriesCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../../contexts/DataContext",
+    "../../../../src/utils/format"
+  ],
+  "src/components/transactions/insights/cards/ViolationsCard.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../../src/utils/format",
+    "../../../../src/utils/transaction-parser"
+  ],
+  "src/components/transactions/modals/CSVPreviewDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../ui/button",
+    "../../ui/badge",
+    "../../../src/utils/csv-parser",
+    "../../../src/utils/deduplication",
+    "../../ui/select"
+  ],
+  "src/components/transactions/modals/ImportModal.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../src/utils/csv-parser",
+    "sonner",
+    "./CSVPreviewDialog",
+    "../../../contexts/DataContext",
+    "../../../src/utils/deduplication"
+  ],
+  "src/components/transactions/modals/RecurringMatchDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../src/utils/csv-parser",
+    "../../../src/utils/recurring-matcher",
+    "../../ui/button",
+    "../../ui/badge",
+    "../../ui/checkbox",
+    "../../ui/scroll-area"
+  ],
+  "src/components/transactions/modals/SplitTransactionDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "../../../contexts/DataContext",
+    "../../../src/utils/format"
+  ],
+  "src/components/transactions/modals/TransactionFormDialog.tsx": [
+    "react",
+    "framer-motion",
+    "lucide-react",
+    "src/utils/csv-parser",
+    "../components/PersonSelector"
+  ],
+  "src/components/transactions/view/TransactionTable.tsx": [
+    "react",
+    "framer-motion",
+    "../../../contexts/DataContext",
+    "lucide-react",
+    "../../ui/button",
+    "../../ui/checkbox",
+    "../../ui/badge",
+    "../../ui/dropdown-menu",
+    "../../ui/avatar",
+    "../../../src/utils/format",
+    "date-fns"
+  ],
+  "src/components/transactions/view/TransactionTableCompact.tsx": [
+    "react",
+    "framer-motion",
+    "../../../contexts/DataContext",
+    "lucide-react",
+    "../../ui/checkbox",
+    "../../../src/utils/format"
+  ],
+  "src/components/ui/accordion.tsx": [
+    "react",
+    "@radix-ui/react-accordion",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/alert-dialog.tsx": [
+    "react",
+    "@radix-ui/react-alert-dialog",
+    "./utils",
+    "./button"
+  ],
+  "src/components/ui/alert.tsx": [
+    "react",
+    "class-variance-authority",
+    "./utils"
+  ],
+  "src/components/ui/aspect-ratio.tsx": [
+    "@radix-ui/react-aspect-ratio"
+  ],
+  "src/components/ui/avatar.tsx": [
+    "react",
+    "@radix-ui/react-avatar",
+    "./utils"
+  ],
+  "src/components/ui/badge.tsx": [
+    "react",
+    "@radix-ui/react-slot",
+    "class-variance-authority",
+    "./utils"
+  ],
+  "src/components/ui/breadcrumb.tsx": [
+    "react",
+    "@radix-ui/react-slot",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/button.tsx": [
+    "react",
+    "@radix-ui/react-slot",
+    "class-variance-authority",
+    "./utils"
+  ],
+  "src/components/ui/calendar.tsx": [
+    "react",
+    "lucide-react",
+    "react-day-picker",
+    "./utils",
+    "./button"
+  ],
+  "src/components/ui/card.tsx": [
+    "react",
+    "./utils"
+  ],
+  "src/components/ui/carousel.tsx": [
+    "react",
+    "embla-carousel-react",
+    "lucide-react",
+    "./utils",
+    "./button"
+  ],
+  "src/components/ui/chart.tsx": [
+    "react",
+    "recharts",
+    "./utils"
+  ],
+  "src/components/ui/checkbox.tsx": [
+    "react",
+    "@radix-ui/react-checkbox",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/collapsible.tsx": [
+    "@radix-ui/react-collapsible@1.1.3"
+  ],
+  "src/components/ui/command.tsx": [
+    "react",
+    "cmdk",
+    "lucide-react",
+    "./utils",
+    "./dialog"
+  ],
+  "src/components/ui/context-menu.tsx": [
+    "react",
+    "@radix-ui/react-context-menu",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/dialog.tsx": [
+    "react",
+    "@radix-ui/react-dialog",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/drawer.tsx": [
+    "react",
+    "vaul@1.1.2",
+    "./utils"
+  ],
+  "src/components/ui/dropdown-menu.tsx": [
+    "react",
+    "@radix-ui/react-dropdown-menu",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/form.tsx": [
+    "react",
+    "@radix-ui/react-label",
+    "@radix-ui/react-slot",
+    "react-hook-form",
+    "./utils",
+    "./label"
+  ],
+  "src/components/ui/hover-card.tsx": [
+    "react",
+    "@radix-ui/react-hover-card",
+    "./utils"
+  ],
+  "src/components/ui/input-otp.tsx": [
+    "react",
+    "input-otp",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/input.tsx": [
+    "react",
+    "./utils"
+  ],
+  "src/components/ui/label.tsx": [
+    "react",
+    "@radix-ui/react-label",
+    "./utils"
+  ],
+  "src/components/ui/menubar.tsx": [
+    "react",
+    "@radix-ui/react-menubar@1.1.6",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/navigation-menu.tsx": [
+    "react",
+    "@radix-ui/react-navigation-menu@1.2.5",
+    "class-variance-authority",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/pagination.tsx": [
+    "react",
+    "lucide-react",
+    "./utils",
+    "./button"
+  ],
+  "src/components/ui/popover.tsx": [
+    "react",
+    "@radix-ui/react-popover@1.1.6",
+    "./utils"
+  ],
+  "src/components/ui/progress.tsx": [
+    "react",
+    "@radix-ui/react-progress",
+    "./utils"
+  ],
+  "src/components/ui/radio-group.tsx": [
+    "react",
+    "@radix-ui/react-radio-group@1.2.3",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/resizable.tsx": [
+    "react",
+    "lucide-react",
+    "react-resizable-panels",
+    "./utils"
+  ],
+  "src/components/ui/scroll-area.tsx": [
+    "react",
+    "@radix-ui/react-scroll-area",
+    "./utils"
+  ],
+  "src/components/ui/select.tsx": [
+    "react",
+    "@radix-ui/react-select",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/separator.tsx": [
+    "react",
+    "@radix-ui/react-separator",
+    "./utils"
+  ],
+  "src/components/ui/sheet.tsx": [
+    "react",
+    "@radix-ui/react-dialog",
+    "lucide-react",
+    "./utils"
+  ],
+  "src/components/ui/sidebar.tsx": [
+    "react",
+    "@radix-ui/react-slot",
+    "class-variance-authority",
+    "lucide-react",
+    "./use-mobile",
+    "./utils",
+    "./button",
+    "./input",
+    "./separator",
+    "./sheet",
+    "./skeleton",
+    "./tooltip"
+  ],
+  "src/components/ui/skeleton.tsx": [
+    "./utils"
+  ],
+  "src/components/ui/slider.tsx": [
+    "react",
+    "@radix-ui/react-slider",
+    "./utils"
+  ],
+  "src/components/ui/sonner.tsx": [
+    "next-themes",
+    "sonner"
+  ],
+  "src/components/ui/switch.tsx": [
+    "react",
+    "@radix-ui/react-switch",
+    "./utils"
+  ],
+  "src/components/ui/table.tsx": [
+    "react",
+    "./utils"
+  ],
+  "src/components/ui/tabs.tsx": [
+    "react",
+    "@radix-ui/react-tabs",
+    "./utils"
+  ],
+  "src/components/ui/textarea.tsx": [
+    "react",
+    "../ui/utils"
+  ],
+  "src/components/ui/toggle-group.tsx": [
+    "react",
+    "@radix-ui/react-toggle-group@1.1.2",
+    "class-variance-authority",
+    "./utils",
+    "./toggle"
+  ],
+  "src/components/ui/toggle.tsx": [
+    "react",
+    "@radix-ui/react-toggle@1.1.2",
+    "class-variance-authority",
+    "./utils"
+  ],
+  "src/components/ui/tooltip.tsx": [
+    "react",
+    "@radix-ui/react-tooltip",
+    "./utils"
+  ],
+  "src/components/ui/use-mobile.ts": [
+    "react"
+  ],
+  "src/components/ui/utils.ts": [
+    "clsx",
+    "tailwind-merge"
+  ],
+  "src/constants/people-config.ts": [
+    "../../types/people"
+  ],
+  "src/contexts/AuthContext.tsx": [
+    "react",
+    "../src/services/authService",
+    "../src/utils/security",
+    "sonner"
+  ],
+  "src/contexts/DataContext.tsx": [
+    "react",
+    "./AuthContext",
+    "src/utils/csv-parser",
+    "../types/rules",
+    "../types/people",
+    "../src/services/storage"
+  ],
+  "src/contexts/RulesContext.tsx": [
+    "react",
+    "../types/rules",
+    "./DataContext",
+    "@/src/utils/ruleEngine"
+  ],
+  "src/contexts/StorageContext.tsx": [
+    "react",
+    "./AuthContext",
+    "sonner"
+  ],
+  "src/contexts/ThemeContext.tsx": [
+    "react"
+  ],
+  "src/contexts/TransactionSettingsContext.tsx": [
+    "react"
+  ],
+  "src/db.ts": [
+    "dexie"
+  ],
+  "src/hooks/useChartData.ts": [
+    "react",
+    "../contexts/DataContext"
+  ],
+  "src/hooks/useDebouncedValue.ts": [
+    "react"
+  ],
+  "src/hooks/useFinancialKPIs.ts": [
+    "react",
+    "../contexts/DataContext",
+    "../src/utils/format"
+  ],
+  "src/hooks/useRecentTransactions.ts": [
+    "react",
+    "@/contexts/DataContext"
+  ],
+  "src/hooks/useRuleViolationsCache.ts": [
+    "react",
+    "@/types/rules",
+    "@/contexts/DataContext",
+    "@/src/utils/ruleEngine"
+  ],
+  "src/main.tsx": [
+    "react",
+    "react-dom/client",
+    "./App"
+  ],
+  "src/services/authService.ts": [
+    "bcryptjs"
+  ],
+  "src/services/predictionService.ts": [
+    "../../contexts/DataContext"
+  ],
+  "src/services/storage.ts": [
+    "@supabase/supabase-js"
+  ],
+  "src/types/rules.ts": [
+    "../contexts/DataContext"
+  ],
+  "src/utils/api.ts": [
+    "@supabase/supabase-js",
+    "./supabase/info"
+  ],
+  "src/utils/budget-rules.ts": [
+    "../../types/budget",
+    "./csv-parser"
+  ],
+  "src/utils/categories.ts": [
+    "src/utils/csv-parser"
+  ],
+  "src/utils/categorization.ts": [
+    "./csv-parser"
+  ],
+  "src/utils/deduplication.ts": [
+    "../../contexts/DataContext"
+  ],
+  "src/utils/insights/anomaly-detection.ts": [
+    "../../../contexts/DataContext"
+  ],
+  "src/utils/insights/benchmark-global.ts": [
+    "./quick-benchmark"
+  ],
+  "src/utils/insights/console-helpers.ts": [
+    "contexts/DataContext",
+    "./quick-benchmark",
+    "./quick-benchmark"
+  ],
+  "src/utils/insights/heatmap-builder.ts": [
+    "../csv-parser"
+  ],
+  "src/utils/insights/index.ts": [
+    "./statistics",
+    "./projection",
+    "./anomaly-detection",
+    "./recurring-detection"
+  ],
+  "src/utils/insights/insights-generator.ts": [
+    "./change-detection",
+    "./heatmap-builder"
+  ],
+  "src/utils/insights/period-comparator.ts": [
+    "../csv-parser"
+  ],
+  "src/utils/insights/projection.ts": [
+    "src/utils/csv-parser",
+    "./behavioralAxes"
+  ],
+  "src/utils/insights/quick-benchmark.ts": [
+    "./src/utils/insights/quick-benchmark",
+    "./contexts/DataContext",
+    "contexts/DataContext",
+    "./recurring-detection"
+  ],
+  "src/utils/insights/recurring-detection.ts": [
+    "contexts/DataContext",
+    "./semantic-similarity"
+  ],
+  "src/utils/insights/semantic-similarity.ts": [
+    "contexts/DataContext"
+  ],
+  "src/utils/people/index.ts": [
+    "../people-calculator",
+    "../people-calculator",
+    "../people-scores",
+    "../people-dsl-engine",
+    "../people-enrichment",
+    "../people-migration",
+    "../../constants/people-config",
+    "../../../types/people"
+  ],
+  "src/utils/people-calculator.ts": [
+    "../../contexts/DataContext",
+    "../../types/people",
+    "../constants/people-config"
+  ],
+  "src/utils/people-dsl-engine.ts": [
+    "../../types/people",
+    "../constants/people-config"
+  ],
+  "src/utils/people-enrichment.ts": [
+    "../../contexts/DataContext",
+    "../../types/people",
+    "./people-calculator",
+    "./people-dsl-engine",
+    "./people-scores",
+    "../constants/people-config",
+    "./people-migration"
+  ],
+  "src/utils/people-migration.ts": [
+    "../../types/people",
+    "../constants/people-config"
+  ],
+  "src/utils/people-scores.ts": [
+    "../../types/people",
+    "../constants/people-config"
+  ],
+  "src/utils/performance-monitor.ts": [
+    "../utils/performance-monitor",
+    "react"
+  ],
+  "src/utils/recurring-group-helpers.ts": [
+    "./csv-parser"
+  ],
+  "src/utils/recurring-matcher.ts": [
+    "./csv-parser"
+  ],
+  "src/utils/ruleEngine.ts": [
+    "@/types/rules",
+    "src/utils/csv-parser",
+    "./stringUtils"
+  ],
+  "src/utils/simulator-engine.ts": [
+    "../../types/simulator"
+  ],
+  "src/utils/split-transaction-helpers.ts": [
+    "../../contexts/DataContext"
+  ],
+  "src/utils/transaction-helpers.ts": [
+    "./csv-parser"
+  ],
+  "src/utils/transaction-parser.ts": [
+    "lucide-react"
+  ],
+  "src/workers/prediction.worker.ts": [
+    "../utils/insights/projection"
+  ]
+}

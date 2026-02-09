@@ -15,7 +15,7 @@ import {
     ArbitrageSignal,
     ArbitrageRule,
     PersonType,
-  } from '../../types/people';
+  } from '../types/people';
   
   // ========================================
   // 🎯 SEUILS DE DÉPENDANCE

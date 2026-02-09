@@ -1,6 +1,6 @@
 // src/utils/api.ts
 import { createClient } from '@supabase/supabase-js';
-import { projectId, publicAnonKey } from './supabase/info';
+import { projectId, publicAnonKey } from '@/utils/supabase/info';
 
 // --- Initialisation du client Supabase ---
 export const supabase = createClient(

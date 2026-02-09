@@ -1,4 +1,4 @@
-import { calculateMonthEndProjection } from '../utils/insights/projection';
+import { calculateMonthEndProjection } from '@/utils/insights/projection';
 
 const workerScope = self as any;
 

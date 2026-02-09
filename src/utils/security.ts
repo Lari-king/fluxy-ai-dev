@@ -1,13 +1,40 @@
 /**
  * 🔒 SECURITY UTILITIES
- * 
- * Fonctions de validation et sanitization pour la sécurité :
+ * * Fonctions de validation, sanitization et chiffrement :
+ * - Chiffrement AES (CryptoJS)
  * - Validation des inputs
  * - Sanitization XSS
  * - Rate limiting helpers
- * 
- * ⚠️ PRODUCTION READY
+ * * ⚠️ PRODUCTION READY
  */
+
+import CryptoJS from 'crypto-js';
+
+const SECRET_SALT = "rasp_secure_2026_prod"; 
+
+/**
+ * ✅ Chiffrement des données sensibles
+ */
+export const encryptData = (data: any, key: string): string => {
+  if (!data) return '';
+  // On ajoute un sel au token utilisateur pour plus de sécurité
+  return CryptoJS.AES.encrypt(JSON.stringify(data), key + SECRET_SALT).toString();
+};
+
+/**
+ * ✅ Déchiffrement des données sensibles
+ */
+export const decryptData = (encryptedStr: string, key: string): any => {
+  if (!encryptedStr) return null;
+  try {
+    const bytes = CryptoJS.AES.decrypt(encryptedStr, key + SECRET_SALT);
+    const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
+    return decryptedData ? JSON.parse(decryptedData) : null;
+  } catch (e) {
+    console.error("❌ Erreur de déchiffrement :", e);
+    return null;
+  }
+};
 
 /**
  * ✅ Sanitize pour affichage texte simple
@@ -131,4 +158,3 @@ export function sanitizeText(input: string): string {
       }
     }
   }
-  

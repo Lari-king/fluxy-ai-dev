@@ -1,4 +1,4 @@
-import { Transaction } from './csv-parser';
+import { Transaction } from '@/utils/csv-parser';
 
 /**
  * Groupe les transactions par recurringGroupId et retourne une liste dédupliquée

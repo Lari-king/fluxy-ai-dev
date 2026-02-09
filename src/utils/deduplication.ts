@@ -1,4 +1,4 @@
-import { Transaction } from '../../contexts/DataContext';
+import { Transaction } from '../contexts/DataContext';
 
 export interface DuplicateResult {
   transaction: Transaction;

@@ -4,7 +4,7 @@
  * Fonctions utilitaires pour tester Flux Smart depuis la console
  */
 
-import { Transaction } from 'contexts/DataContext';
+import { Transaction } from '@/contexts/DataContext';
 
 /**
  * Récupère les transactions depuis localStorage

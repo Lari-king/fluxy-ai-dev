@@ -1,36 +1,33 @@
 /**
  * 🎯 ORCHESTRATEUR PRINCIPAL - ENRICHISSEMENT COMPLET
- * 
- * Combine tous les calculateurs pour produire des PersonRelation complètes
+ * * Combine tous les calculateurs pour produire des PersonRelation complètes
  * avec toutes les dimensions calculées
- * 
- * ⚡ Performance : O(n) optimisé avec mémoisation et cache
- * 
- * Architecture :
+ * * ⚡ Performance : O(n) optimisé avec mémoisation et cache
+ * * Architecture :
  * 1. Agrégation transactions → stats financières
  * 2. Calcul indicateurs → tendances, dépendances, progressions
  * 3. Exécution DSL → signaux d'arbitrage
  * 4. Calcul scores globaux → liberté + résilience
  */
 
-import { Transaction } from '../../contexts/DataContext';
+import { Transaction } from '../contexts/DataContext';
 import {
   PersonRelation,
   PeopleScores,
   ArbitrageRule,
-} from '../../types/people';
+} from '../types/people';
 import {
   enrichAllPeople,
   clearAggregationCache,
-} from './people-calculator';
+} from '@/utils/people-calculator';
 import {
   enrichAllWithArbitrageSignals,
-} from './people-dsl-engine';
+} from '@/utils/people-dsl-engine';
 import {
   calculatePeopleScores,
-} from './people-scores';
-import { DEFAULT_MONTHLY_INCOME } from '../constants/people-config';
-import { migrateIfNeeded } from './people-migration';
+} from '@/utils/people-scores';
+import { DEFAULT_MONTHLY_INCOME } from '@/constants/people-config';
+import { migrateIfNeeded } from '@/utils/people-migration';
 
 // ========================================
 // 📊 CONTEXTE D'ENRICHISSEMENT
@@ -67,23 +64,12 @@ export interface EnrichmentResult {
 
 /**
  * Enrichit toutes les personnes avec le pipeline complet
- * 
- * Pipeline :
+ * * Pipeline :
  * 1. Migration automatique (si nécessaire)
  * 2. Enrichissement avec stats financières + indicateurs
  * 3. Enrichissement avec signaux d'arbitrage
  * 4. Calcul des scores globaux
- * 
- * ⚡ Performance : O(n) optimisé
- * - 1 passe pour migration
- * - 1 passe pour stats financières (avec cache)
- * - 1 passe pour signaux DSL
- * - 1 passe pour scores
- * Total : O(4n) = O(n)
- * 
- * @param rawPeople - Personnes brutes (peuvent être ancien format)
- * @param context - Contexte d'enrichissement
- * @returns Résultat complet avec people enrichies + scores
+ * * ⚡ Performance : O(n) optimisé
  */
 export function enrichPeoplePipeline(
   rawPeople: any[],
@@ -122,16 +108,12 @@ export function enrichPeoplePipeline(
 
 /**
  * Calcule des statistiques globales sur l'ensemble des relations
- * 
- * @param people - Relations enrichies
- * @param transactions - Toutes les transactions
- * @returns Statistiques globales
  */
 function calculateGlobalStats(
   people: PersonRelation[],
   transactions: Transaction[]
 ): EnrichmentResult['stats'] {
-  // Transactions non masquées (exclure les sous-transactions)
+  // Transactions non masquées
   const visibleTransactions = transactions.filter(t => !t.isHidden);
   
   // Impact mensuel moyen total
@@ -162,12 +144,6 @@ function calculateGlobalStats(
 // 🎯 HOOKS D'OPTIMISATION
 // ========================================
 
-/**
- * Cache global des résultats d'enrichissement
- * 
- * Clé : hash des inputs (people + transactions + monthlyIncome)
- * Valeur : EnrichmentResult
- */
 const enrichmentCache = new Map<string, EnrichmentResult>();
 
 /**
@@ -183,15 +159,6 @@ function generateCacheKey(
 
 /**
  * Enrichit avec mémoisation automatique
- * 
- * Si les inputs n'ont pas changé, retourne le résultat en cache
- * 
- * ⚡ Performance : O(1) si en cache, O(n) sinon
- * 
- * @param rawPeople - Personnes brutes
- * @param context - Contexte d'enrichissement
- * @param useCache - Activer le cache (par défaut true)
- * @returns Résultat enrichi (potentiellement en cache)
  */
 export function enrichPeopleWithCache(
   rawPeople: any[],
@@ -204,15 +171,12 @@ export function enrichPeopleWithCache(
     context.monthlyIncome
   );
   
-  // Vérifier le cache
   if (useCache && enrichmentCache.has(cacheKey)) {
     return enrichmentCache.get(cacheKey)!;
   }
   
-  // Calcul complet
   const result = enrichPeoplePipeline(rawPeople, context);
   
-  // Mise en cache
   if (useCache) {
     enrichmentCache.set(cacheKey, result);
   }
@@ -222,9 +186,6 @@ export function enrichPeopleWithCache(
 
 /**
  * Nettoie tous les caches
- * 
- * À appeler quand les données changent significativement
- * (ajout/suppression de personne, import de transactions, etc.)
  */
 export function clearAllCaches(): void {
   enrichmentCache.clear();
@@ -235,9 +196,6 @@ export function clearAllCaches(): void {
 // 🔍 FILTRAGE ET RECHERCHE
 // ========================================
 
-/**
- * Filtre les personnes selon des critères
- */
 export interface PeopleFilter {
   circles?: string[];
   contributionTypes?: string[];
@@ -248,76 +206,37 @@ export interface PeopleFilter {
   searchQuery?: string;
 }
 
-/**
- * Filtre les personnes enrichies selon des critères
- * 
- * @param people - Personnes enrichies
- * @param filter - Critères de filtrage
- * @returns Personnes filtrées
- */
 export function filterPeople(
   people: PersonRelation[],
   filter: PeopleFilter
 ): PersonRelation[] {
   return people.filter(person => {
-    // Filtre par cercle
-    if (filter.circles && filter.circles.length > 0) {
-      if (!filter.circles.includes(person.circle)) {
-        return false;
-      }
-    }
+    if (filter.circles?.length && !filter.circles.includes(person.circle)) return false;
     
-    // Filtre par type de contribution
-    if (filter.contributionTypes && filter.contributionTypes.length > 0) {
-      if (!person.contributionType || !filter.contributionTypes.includes(person.contributionType)) {
-        return false;
-      }
-    }
+    if (filter.contributionTypes?.length && 
+        (!person.contributionType || !filter.contributionTypes.includes(person.contributionType))) return false;
     
-    // Filtre par niveau de dépendance
-    if (filter.dependanceLevels && filter.dependanceLevels.length > 0) {
-      if (!person.dependanceLevel || !filter.dependanceLevels.includes(person.dependanceLevel)) {
-        return false;
-      }
-    }
+    if (filter.dependanceLevels?.length && 
+        (!person.dependanceLevel || !filter.dependanceLevels.includes(person.dependanceLevel))) return false;
     
-    // Filtre par tendance
-    if (filter.trends && filter.trends.length > 0) {
-      if (!person.trend || !filter.trends.includes(person.trend)) {
-        return false;
-      }
-    }
+    if (filter.trends?.length && 
+        (!person.trend || !filter.trends.includes(person.trend))) return false;
     
-    // Filtre par signal d'arbitrage
-    if (filter.arbitrageSignals && filter.arbitrageSignals.length > 0) {
-      if (!person.arbitrageSignal || !filter.arbitrageSignals.includes(person.arbitrageSignal)) {
-        return false;
-      }
-    }
+    if (filter.arbitrageSignals?.length && 
+        (!person.arbitrageSignal || !filter.arbitrageSignals.includes(person.arbitrageSignal))) return false;
     
-    // Filtre par type de personne
-    if (filter.personTypes && filter.personTypes.length > 0) {
-      if (!filter.personTypes.includes(person.personType)) {
-        return false;
-      }
-    }
+    if (filter.personTypes?.length && !filter.personTypes.includes(person.personType)) return false;
     
-    // Recherche textuelle
-    if (filter.searchQuery && filter.searchQuery.trim() !== '') {
+    if (filter.searchQuery?.trim()) {
       const query = filter.searchQuery.toLowerCase();
       const searchableText = [
         person.name,
         person.relationship,
         person.notes,
         person.email,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
+      ].filter(Boolean).join(' ').toLowerCase();
       
-      if (!searchableText.includes(query)) {
-        return false;
-      }
+      if (!searchableText.includes(query)) return false;
     }
     
     return true;
@@ -328,9 +247,6 @@ export function filterPeople(
 // 📊 TRI ET CLASSEMENT
 // ========================================
 
-/**
- * Critères de tri disponibles
- */
 export type SortCriteria =
   | 'name'
   | 'totalImpact'
@@ -339,14 +255,6 @@ export type SortCriteria =
   | 'progression'
   | 'lastTransaction';
 
-/**
- * Trie les personnes selon un critère
- * 
- * @param people - Personnes enrichies
- * @param criteria - Critère de tri
- * @param ascending - Ordre croissant (par défaut false)
- * @returns Personnes triées
- */
 export function sortPeople(
   people: PersonRelation[],
   criteria: SortCriteria,
@@ -359,26 +267,20 @@ export function sortPeople(
       case 'name':
         comparison = a.name.localeCompare(b.name);
         break;
-      
       case 'totalImpact':
         comparison = (a.totalImpact || 0) - (b.totalImpact || 0);
         break;
-      
       case 'dependance':
         comparison = (a.dependanceRatio || 0) - (b.dependanceRatio || 0);
         break;
-      
       case 'trend':
         const trendOrder = { AMELIORATION: 1, STABLE: 0, AGGRAVATION: -1 };
-        comparison =
-          (trendOrder[a.trend as keyof typeof trendOrder] || 0) -
-          (trendOrder[b.trend as keyof typeof trendOrder] || 0);
+        comparison = (trendOrder[a.trend as keyof typeof trendOrder] || 0) - 
+                     (trendOrder[b.trend as keyof typeof trendOrder] || 0);
         break;
-      
       case 'progression':
         comparison = (a.progressionPercentage || 0) - (b.progressionPercentage || 0);
         break;
-      
       case 'lastTransaction':
         const dateA = a.lastTransactionDate ? new Date(a.lastTransactionDate).getTime() : 0;
         const dateB = b.lastTransactionDate ? new Date(b.lastTransactionDate).getTime() : 0;
@@ -396,28 +298,18 @@ export function sortPeople(
 // 🎯 HELPERS RAPIDES
 // ========================================
 
-/**
- * Récupère les personnes avec des signaux d'alerte
- */
 export function getPeopleWithAlerts(people: PersonRelation[]): PersonRelation[] {
   return people.filter(
-    p =>
-      p.arbitrageSignal === 'REDUIRE' ||
-      p.arbitrageSignal === 'SURVEILLER' ||
-      p.trend === 'AGGRAVATION'
+    p => p.arbitrageSignal === 'REDUIRE' || 
+         p.arbitrageSignal === 'SURVEILLER' || 
+         p.trend === 'AGGRAVATION'
   );
 }
 
-/**
- * Récupère les personnes en amélioration
- */
 export function getPeopleInProgress(people: PersonRelation[]): PersonRelation[] {
   return people.filter(p => p.trend === 'AMELIORATION');
 }
 
-/**
- * Récupère les personnes sans objectif défini
- */
 export function getPeopleWithoutObjectives(people: PersonRelation[]): PersonRelation[] {
   return people.filter(p => !p.targetObjective);
 }

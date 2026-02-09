@@ -3,7 +3,7 @@
  * Comparaison de périodes pour identifier les changements de comportement
  */
 
-import type { Transaction } from '../csv-parser';
+import type { Transaction } from '@/utils/csv-parser';
 
 export interface PeriodComparison {
   categoryId: string;

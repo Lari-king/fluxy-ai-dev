@@ -2,7 +2,7 @@
  * Performance Monitor - Lightweight system to detect memory issues
  * 
  * Usage in components:
- * import { useRenderTracker } from '../utils/performance-monitor';
+ * import { useRenderTracker } from '@/utils/performance-monitor';
  * useRenderTracker('ComponentName');
  */
 

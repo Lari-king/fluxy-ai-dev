@@ -15,18 +15,18 @@
  * - Ajoute de nouvelles fonctions avancées (tendances, dépendances, progressions)
  */
 
-import { Transaction } from '../../contexts/DataContext'; // Import depuis DataContext pour avoir le type complet
+import { Transaction } from '../contexts/DataContext'; // Import depuis DataContext pour avoir le type complet
 import {
   PersonRelation,
   DependanceLevel,
   Trend,
   ProgressionState,
   PersonType,
-} from '../../types/people';
+} from '../types/people';
 import {
   TREND_CALCULATION_MONTHS,
   calculateDependanceLevel,
-} from '../constants/people-config';
+} from '@/constants/people-config';
 
 // ========================================
 // 🔄 TYPES RÉTROCOMPATIBLES

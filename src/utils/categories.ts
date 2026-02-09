@@ -1,4 +1,4 @@
-import { Transaction } from 'src/utils/csv-parser'; // ✅ CORRECTION: chemin correct
+import { Transaction } from '@/utils/csv-parser'; // ✅ CORRECTION: chemin correct
 
 /**
  * Extract unique categories from transactions and merge with existing categories

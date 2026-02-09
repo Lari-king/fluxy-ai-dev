@@ -1,4 +1,4 @@
-import { Transaction } from './csv-parser';
+import { Transaction } from '@/utils/csv-parser';
 
 /**
  * Check if a transaction is upcoming (date is in the future)
