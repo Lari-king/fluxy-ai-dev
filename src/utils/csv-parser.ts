@@ -4,6 +4,7 @@ export interface Transaction {
   description: string;
   amount: number;
   category: string; // ✅ Obligatoire (valeur par défaut : "Non catégorisé")
+  subCategory?: string; // ✅ AJOUTÉ : Pour permettre le mapping distinct
   type?: 'online' | 'physical';
   url?: string;
   address?: string;
@@ -83,11 +84,6 @@ export function parseCSV(csvText: string): Transaction[] {
       row[header] = values[index] || '';
     });
     
-    // Debug first row
-    if (i === 1) {
-      console.log('📊 First row data:', row);
-    }
-
     // Map common column names to our format
     const transaction: Transaction = {
       id: generateId(),
@@ -96,7 +92,8 @@ export function parseCSV(csvText: string): Transaction[] {
       amount: extractAmount(row),
       type: extractType(row),
       account: extractAccount(row),
-      category: extractCategory(row) || "Non catégorisé", // ✅ Valeur par défaut
+      category: extractCategory(row) || "Non catégorisé", 
+      subCategory: extractSubCategory(row), // ✅ CORRECTION : Utilise la nouvelle fonction
       url: extractField(row, ['url', 'link', 'website']),
       address: extractField(row, ['address', 'adresse', 'location']),
       brand: extractField(row, ['brand', 'marque', 'enseigne', 'merchant']),
@@ -177,14 +174,12 @@ function extractDate(row: any): string {
     'datum',
   ];
   
-  // Try exact matches first
   for (const key of dateKeys) {
     if (row[key]) {
       return normalizeDate(row[key]);
     }
   }
   
-  // Try fuzzy matching
   for (const key of Object.keys(row)) {
     if (key.includes('date')) {
       return normalizeDate(row[key]);
@@ -195,7 +190,6 @@ function extractDate(row: any): string {
 }
 
 function extractDescription(row: any): string {
-  // Try exact matches first (keys are now lowercase)
   const descKeys = [
     'libellé operation',
     'libelle operation',
@@ -210,29 +204,20 @@ function extractDescription(row: any): string {
     'payee',
   ];
   
-  // First try exact matches
   for (const key of descKeys) {
     if (row[key]) {
       const value = row[key].trim();
-      if (value) {
-        console.log(`✓ Found description using key "${key}":`, value);
-        return value;
-      }
+      if (value) return value;
     }
   }
   
-  // Then try fuzzy matching
   for (const key of Object.keys(row)) {
     if (key.includes('libel') && key.includes('operation')) {
       const value = row[key].trim();
-      if (value) {
-        console.log(`✓ Found description using fuzzy match "${key}":`, value);
-        return value;
-      }
+      if (value) return value;
     }
   }
 
-  console.log('⚠️ No description found, using default');
   return 'Transaction';
 }
 
@@ -248,56 +233,47 @@ function extractAmount(row: any): number {
     'valeur',
   ];
   
-  // Try exact matches first
   for (const key of amountKeys) {
     if (row[key] && row[key].toString().trim()) {
       const result = parseAmount(row[key]);
-      if (result !== 0) {
-        console.log(`✓ Found amount using key "${key}":`, row[key], '→', result);
-        return result;
-      }
+      if (result !== 0) return result;
     }
   }
   
-  // Try fuzzy matching
   for (const key of Object.keys(row)) {
     if (key.includes('montant') || key.includes('amount')) {
       const result = parseAmount(row[key]);
-      if (result !== 0) {
-        console.log(`✓ Found amount using fuzzy match "${key}":`, row[key], '→', result);
-        return result;
-      }
+      if (result !== 0) return result;
     }
   }
 
-  console.log('⚠️ No amount found');
   return 0;
 }
 
+// ✅ MODIFIÉ : Ne capture plus les sous-catégories
 function extractCategory(row: any): string {
   const categoryKeys = [
     'categorie operation',
     'catégorie operation',
     'catégorie opération',
-    'sous categorie operation',
-    'sous catégorie operation',
-    'sous catégorie opération',
     'category',
     'categorie',
     'catégorie',
   ];
   
-  // Try exact matches
   for (const key of categoryKeys) {
     const value = row[key];
-    if (value && value.trim() !== 'À catégoriser' && value.trim() !== 'A catégoriser') {
-      return value.trim();
+    // On ignore si la clé contient "sous"
+    if (value && !key.toLowerCase().includes('sous')) {
+      const trimmed = value.trim();
+      if (trimmed !== 'À catégoriser' && trimmed !== 'A catégoriser') {
+        return trimmed;
+      }
     }
   }
   
-  // Try fuzzy matching
   for (const key of Object.keys(row)) {
-    if (key.includes('categor') || key.includes('catégor')) {
+    if ((key.includes('categor') || key.includes('catégor')) && !key.includes('sous')) {
       const value = row[key];
       if (value && value.trim() !== 'À catégoriser' && value.trim() !== 'A catégoriser') {
         return value.trim();
@@ -308,85 +284,83 @@ function extractCategory(row: any): string {
   return '';
 }
 
+// ✅ NOUVEAU : Fonction dédiée pour la sous-catégorie
+function extractSubCategory(row: any): string {
+  const subCategoryKeys = [
+    'sous categorie operation',
+    'sous catégorie operation',
+    'sous catégorie opération',
+    'subcategory',
+    'sous-categorie',
+  ];
+  
+  for (const key of subCategoryKeys) {
+    if (row[key]) return row[key].trim();
+  }
+
+  // Fuzzy match
+  for (const key of Object.keys(row)) {
+    if (key.includes('sous') && (key.includes('categor') || key.includes('catégor'))) {
+      return row[key].trim();
+    }
+  }
+  return '';
+}
+
 function extractAccount(row: any): string {
   const accountKeys = ['account', 'compte', 'account number', 'numero de compte'];
-  
   for (const key of accountKeys) {
     const value = row[key];
     if (value) return value.trim();
   }
-
   return '';
 }
 
 function parseAmount(value: string): number {
   if (!value) return 0;
-  
-  // Convert to string first
   let strValue = value.toString().trim();
-  
-  // Check if negative (before removing anything)
   const isNegative = strValue.includes('-');
-  
-  // Remove currency symbols and ALL spaces (including around minus sign)
   let cleaned = strValue
     .replace(/[€$£¥]/g, '')
     .replace(/EUR|USD|GBP|CHF/gi, '')
-    .replace(/\s+/g, '') // Remove ALL spaces
+    .replace(/\s+/g, '') 
     .trim();
   
-  // Ensure minus sign is at the beginning if it exists
   if (isNegative && !cleaned.startsWith('-')) {
     cleaned = '-' + cleaned.replace(/-/g, '');
   }
 
-  // Handle French format (1.234,56 -> 1234.56)
   if (cleaned.includes(',') && cleaned.includes('.')) {
-    // Keep minus sign if present
     const sign = cleaned.startsWith('-') ? '-' : '';
     const unsigned = cleaned.replace('-', '');
     cleaned = sign + unsigned.replace(/\./g, '').replace(',', '.');
   } else if (cleaned.includes(',')) {
-    // Replace comma with dot for decimal
     cleaned = cleaned.replace(',', '.');
   }
 
   const num = parseFloat(cleaned);
-  const result = isNaN(num) ? 0 : num;
-  
-  return result;
+  return isNaN(num) ? 0 : num;
 }
 
 function normalizeDate(dateStr: string): string {
-  // Try to parse various date formats
   const formats = [
-    /(\d{4})-(\d{2})-(\d{2})/, // YYYY-MM-DD
-    /(\d{2})\/(\d{2})\/(\d{4})/, // DD/MM/YYYY
-    /(\d{2})-(\d{2})-(\d{4})/, // DD-MM-YYYY
+    /(\d{4})-(\d{2})-(\d{2})/, 
+    /(\d{2})\/(\d{2})\/(\d{4})/, 
+    /(\d{2})-(\d{2})-(\d{4})/, 
   ];
 
   for (const format of formats) {
     const match = dateStr.match(format);
     if (match) {
-      if (format === formats[0]) {
-        // Already in ISO format
-        return dateStr;
-      } else {
-        // DD/MM/YYYY or DD-MM-YYYY -> YYYY-MM-DD
-        return `${match[3]}-${match[2]}-${match[1]}`;
-      }
+      if (format === formats[0]) return dateStr;
+      else return `${match[3]}-${match[2]}-${match[1]}`;
     }
   }
 
-  // If can't parse, try to use Date constructor
   try {
     const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
-  } catch (e) {
-    // Ignore
-  }
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+  } catch (e) {}
 
   return new Date().toISOString().split('T')[0];
 }

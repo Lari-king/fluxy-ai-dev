@@ -6,6 +6,7 @@ export const AppEvents = {
   BUDGETS_UPDATED: 'app:budgets:updated',
   CATEGORIES_UPDATED: 'app:categories:updated',
   GOALS_UPDATED: 'app:goals:updated',
+  RELATION_CREATED: 'relation:created'
 };
 
 export function emitEvent(eventName: string, data?: any) {

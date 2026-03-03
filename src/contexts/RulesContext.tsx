@@ -1,11 +1,36 @@
 /**
  * 🎯 RULES CONTEXT - VERSION R.A.S.P STABILISÉE
+ * Intègre le moteur de calcul et expose les règles au reste de l'application
  */
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { Rule, RuleViolation, RulesConfiguration, ViolationsSummary } from '@/types/rules';
+// ✅ CORRECTION : Tous les types viennent du module intelligence (source unique)
+import { Rule, RuleViolation, RuleConditionType } from '@/features/intelligence/types';
 import { useData } from '@/contexts/DataContext'; 
-import { evaluateAllRules } from '@/utils/ruleEngine';
+import { evaluateAllRules } from '@/features/intelligence/engine/rule-engine';
 import { toast } from 'sonner';
+
+// ============================================================================
+// TYPES ADDITIONNELS POUR LE CONTEXT
+// ============================================================================
+
+export interface RulesConfiguration {
+  enabled: boolean;
+  autoEvaluate: boolean;
+  notificationsEnabled: boolean;
+  strictMode: boolean;
+  evaluationFrequency: 'realtime' | 'manual';
+  maxViolationsHistory: number;
+  defaultSeverity: 'error' | 'warning' | 'info';
+}
+
+export interface ViolationsSummary {
+  totalViolations: number;
+  byRuleType: Record<RuleConditionType, number>;
+  bySeverity: { info: number; warning: number; error: number };
+  mostViolatedRules: any[];
+  recentViolations: RuleViolation[];
+  oldestUnacknowledged?: RuleViolation;
+}
 
 const DEFAULT_CONFIGURATION: RulesConfiguration = {
   enabled: true,
@@ -18,6 +43,7 @@ const DEFAULT_CONFIGURATION: RulesConfiguration = {
 };
 
 interface RulesContextType {
+  rules: Rule[];
   violations: RuleViolation[];
   configuration: RulesConfiguration;
   isEvaluating: boolean;
@@ -33,11 +59,16 @@ interface RulesContextType {
 const RulesContext = createContext<RulesContextType | undefined>(undefined);
 
 export function RulesProvider({ children }: { children: React.ReactNode }) {
-  const { rules: rawRules = [], transactions = [], categories = [], updateRules, loading: dataLoading } = useData();
+  // Récupération des données depuis le DataContext
+  const { rules: rawRules = [], transactions = [], updateRules, loading: dataLoading } = useData();
+  
   const [violations, setViolations] = useState<RuleViolation[]>([]);
   const [configuration, setConfiguration] = useState<RulesConfiguration>(DEFAULT_CONFIGURATION);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
+  /**
+   * Lance l'évaluation des règles sur les transactions
+   */
   const runEvaluation = useCallback(() => {
     if (!configuration.enabled || dataLoading || !rawRules.length) {
       if (!rawRules.length) setViolations([]);
@@ -45,10 +76,11 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
     }
 
     setIsEvaluating(true);
-    // Petit timeout pour laisser l'UI respirer
+    
+    // Petit délai pour éviter de bloquer le thread principal
     const timer = setTimeout(() => {
       try {
-        const results = evaluateAllRules(rawRules, transactions, categories);
+        const results = evaluateAllRules(rawRules, transactions);
         setViolations(results || []);
       } catch (err) {
         console.error("❌ RASP Engine Error:", err);
@@ -60,12 +92,14 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(timer);
   }, [rawRules, transactions, configuration.enabled, dataLoading]);
 
+  // Ré-évaluer dès que les règles ou les transactions changent
   useEffect(() => {
-    runEvaluation();
-  }, [runEvaluation]);
+    if (configuration.autoEvaluate) {
+      runEvaluation();
+    }
+  }, [runEvaluation, configuration.autoEvaluate]);
 
   const addRule = useCallback(async (ruleData: any) => {
-    console.log("➕ RASP : Création d'une règle...");
     const newRule: Rule = {
       ...ruleData,
       id: `rule_${Date.now()}`,
@@ -75,7 +109,6 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
       triggeredCount: 0,
     };
     
-    // On propage vers le DataContext (qui sauvegardera en local)
     await updateRules([...rawRules, newRule]);
     toast.success("Règle ajoutée");
   }, [rawRules, updateRules]);
@@ -98,14 +131,29 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
 
   const getViolationsSummary = useCallback((): ViolationsSummary => {
     const bySeverity = { info: 0, warning: 0, error: 0 };
+    const byRuleType: Record<RuleConditionType, number> = {
+      category_budget: 0,
+      merchant_frequency: 0,
+      merchant_amount: 0,
+      person_flow: 0,
+      time_range: 0,
+      recurring_variance: 0,
+      keyword_detection: 0
+    };
+
     violations.forEach(v => {
-      if (bySeverity[v.severity as keyof typeof bySeverity] !== undefined) {
+      if (v.severity in bySeverity) {
         bySeverity[v.severity as keyof typeof bySeverity]++;
       }
+      const type = v.rule.type;
+      if (type in byRuleType) {
+        byRuleType[type as RuleConditionType]++;
+      }
     });
+
     return {
       totalViolations: violations.length,
-      byRuleType: {},
+      byRuleType,
       bySeverity,
       mostViolatedRules: [],
       recentViolations: violations.slice(0, 5),
@@ -114,12 +162,18 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   }, [violations]);
 
   const value = useMemo(() => ({
-    violations, configuration, isEvaluating, addRule, updateRule, deleteRule,
+    rules: rawRules,
+    violations, 
+    configuration, 
+    isEvaluating, 
+    addRule, 
+    updateRule, 
+    deleteRule,
     refreshViolations: runEvaluation,
     getViolationsSummary,
-    updateConfiguration: (u: any) => setConfiguration(c => ({ ...c, ...u })),
+    updateConfiguration: (u: Partial<RulesConfiguration>) => setConfiguration(c => ({ ...c, ...u })),
     acknowledgeViolation
-  }), [violations, configuration, isEvaluating, addRule, updateRule, deleteRule, runEvaluation, getViolationsSummary, acknowledgeViolation]);
+  }), [rawRules, violations, configuration, isEvaluating, addRule, updateRule, deleteRule, runEvaluation, getViolationsSummary, acknowledgeViolation]);
 
   return <RulesContext.Provider value={value}>{children}</RulesContext.Provider>;
 }

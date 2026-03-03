@@ -1,54 +1,92 @@
 /**
- * 🎯 DATA CONTEXT - VERSION R.A.S.P SÉCURISÉE (AES)
- * * Centralise les données de l'application avec chiffrement local
- * pour protéger les informations financières sensibles.
+ * 🎯 DATA CONTEXT - VERSION AUTO-APPRENTISSAGE RÉPARÉE
+ * Correction : Support complet des sous-catégories et persistance robuste.
  */
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Transaction as BaseTransaction } from '@/utils/csv-parser';
-import { Rule } from '@/types/rules';
-import { PersonRelation } from '@/types/people';
-import { encryptData, decryptData } from '@/utils/security'; // Import des nouvelles fonctions
+import { Rule } from '@/features/intelligence/types';
+import { PersonRelation } from '@/features/people/types/base';
+import { encryptData, decryptData } from '@/utils/security';
 import { toast } from 'sonner';
+import { DEFAULT_CATEGORIES } from '@/constants/default-categories';
+import { extractCategoriesFromTransactions } from '@/utils/categories'; 
 
-// --- TYPES ---
-export type { PersonRelation }; 
+export type { PersonRelation };
 
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-  icon: string;
-  emoji?: string;
-  parentId?: string;
+export interface Category { 
+  id: string; 
+  name: string; 
+  color: string; 
+  icon: string; 
+  emoji?: string; 
+  parentId?: string; 
 }
 
-export interface Transaction extends Omit<BaseTransaction, 'splitNote'> {
-  personId?: string;
-  isPending?: boolean;
-  metadata?: Record<string, any>;
-  tags?: string[];
-  lastModified?: string;
-  isHidden?: boolean;
-  parentTransactionId?: string;
+export interface Goal { 
+  id: string; 
+  name: string; 
+  description: string; 
+  current: number; 
+  target: number; 
+  deadline: string; 
+  icon: string; 
+  color: string; 
+  category: string; 
+  startDate: string; 
+  endDate: string; 
+  status: 'in-progress' | 'completed' | 'on-hold'; 
+}
+
+export interface Budget { 
+  id: string; 
+  name: string; 
+  category: string; 
+  allocated: number; 
+  spent: number; 
+  icon: string; 
+  color: string; 
+  rules?: any[]; 
+  period?: 'monthly' | 'yearly' | 'weekly'; 
+  month?: string; 
+}
+
+export interface Transaction extends Omit<BaseTransaction, 'splitNote'> { 
+  personId?: string; 
+  isPending?: boolean; 
+  metadata?: Record<string, any>; 
+  tags?: string[]; 
+  lastModified?: string; 
+  isHidden?: boolean; 
+  parentTransactionId?: string; 
   childTransactionIds?: string[];
+  splitNote?: string;
+  description: string;
+  category: string;
+  subCategory?: string; // ✅ Ajout explicite pour le typage
+  amount: number;
+  date: string;
 }
 
 export interface Entity { id: string; [key: string]: any; }
 
 interface DataContextType {
   transactions: Transaction[];
-  budgets: Entity[];
-  goals: Entity[];
+  budgets: Budget[];
+  goals: Goal[];
   people: PersonRelation[];
   accounts: Entity[];
   categories: Category[];
   rules: Rule[];
   loading: boolean;
   refreshData: () => void;
+  handleImport: (txs: Transaction[]) => Promise<void>;
+  addTransaction: (tx: Transaction) => Promise<void>;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   updateTransactions: (txs: Transaction[]) => void;
-  updateBudgets: (b: Entity[]) => void;
-  updateGoals: (g: Entity[]) => void;
+  updateBudgets: (b: Budget[]) => void;
+  updateGoals: (g: Goal[]) => void;
   updatePeople: (p: PersonRelation[]) => void;
   updateAccounts: (a: Entity[]) => void;
   updateCategories: (c: Category[]) => void;
@@ -56,8 +94,6 @@ interface DataContextType {
 }
 
 const DataContext = createContext<DataContextType | null>(null);
-
-// Aide pour générer les clés de stockage
 const getStorageKey = (token: string, key: string) => `flux_data_${token}_${key}`;
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
@@ -66,18 +102,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [rawPeople, setRawPeople] = useState<PersonRelation[]>([]);
-  const [budgets, setBudgets] = useState<Entity[]>([]);
-  const [goals, setGoals] = useState<Entity[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [accounts, setAccounts] = useState<Entity[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadedTokenRef = useRef<string | null>(null);
+  // Expose catégories pour le script d'investigation
+  useEffect(() => {
+    (window as any).categories = categories;
+  }, [categories]);
 
-  /**
-   * ✅ Sauvegarde sécurisée (Chiffrée)
-   */
   const saveToStorage = useCallback((key: string, data: any) => {
     try {
       const storageKey = getStorageKey(activeToken, key);
@@ -88,98 +124,106 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeToken]);
 
-  /**
-   * ✅ Chargement sécurisé (Déchiffrement)
-   */
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const keys = ['transactions', 'people', 'budgets', 'goals', 'accounts', 'categories', 'rules'];
-      const dataHandlers: Record<string, (val: any) => void> = {
-        transactions: setTransactions,
-        people: setRawPeople,
-        budgets: setBudgets,
-        goals: setGoals,
-        accounts: setAccounts,
-        categories: setCategories,
-        rules: setRules
-      };
-
       keys.forEach(key => {
-        const fullKey = getStorageKey(activeToken, key);
-        const stored = localStorage.getItem(fullKey);
-        
+        const stored = localStorage.getItem(getStorageKey(activeToken, key));
         if (stored) {
-          // Si les données commencent par "{" ou "[", elles ne sont pas encore chiffrées (migration)
-          const isLegacy = stored.startsWith('{') || stored.startsWith('[');
-          const decrypted = isLegacy ? JSON.parse(stored) : decryptData(stored, activeToken);
-          
+          const decrypted = decryptData(stored, activeToken);
           if (decrypted) {
-            dataHandlers[key](decrypted);
-            // On re-sauvegarde en format chiffré si c'était du vieux format
-            if (isLegacy) saveToStorage(key, decrypted);
+            if (key === 'transactions') setTransactions(decrypted);
+            if (key === 'people') setRawPeople(decrypted);
+            if (key === 'budgets') setBudgets(decrypted);
+            if (key === 'goals') setGoals(decrypted);
+            if (key === 'accounts') setAccounts(decrypted);
+            if (key === 'categories') setCategories(decrypted);
+            if (key === 'rules') setRules(decrypted);
           }
+        } else if (key === 'categories') {
+          setCategories(DEFAULT_CATEGORIES);
         }
       });
-      
-      loadedTokenRef.current = activeToken;
-    } catch (err) {
-      console.error("❌ RASP Load Error:", err);
-      toast.error("Erreur lors du chargement des données sécurisées");
-    } finally {
-      setLoading(false);
-    }
-  }, [activeToken, saveToStorage]);
+    } finally { setLoading(false); }
+  }, [activeToken]);
 
-  useEffect(() => {
-    if (loadedTokenRef.current !== activeToken) {
-      loadData();
-    }
-  }, [activeToken, loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  // Handlers de mise à jour simplifiés
-  const updateTransactions = useCallback((txs: Transaction[]) => {
-    setTransactions(txs);
-    saveToStorage('transactions', txs);
+  const handleImport = useCallback(async (newTxs: Transaction[]) => {
+    // ✅ NORMALISATION AMÉLIORÉE : On préserve la subCategory
+    const normalizedTxs = newTxs.map(tx => ({
+      ...tx,
+      id: tx.id || crypto.randomUUID(),
+      description: tx.description || (tx as any).label || "Sans description",
+      category: tx.category || "Inconnue",
+      subCategory: tx.subCategory || "", // Préserver la sous-catégorie de l'import
+      amount: typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount,
+      date: tx.date || new Date().toISOString()
+    }));
+
+    // ✅ EXTRACTION ET PERSISTANCE DES CATÉGORIES ET SOUS-CATÉGORIES
+    setCategories(prevCats => {
+      // S'assure que extractCategoriesFromTransactions gère bien les parentId
+      const updatedCats = extractCategoriesFromTransactions(normalizedTxs, prevCats);
+      saveToStorage('categories', updatedCats);
+      return updatedCats;
+    });
+
+    setTransactions(prev => {
+      const combined = [...normalizedTxs, ...prev];
+      const uniqueMap = new Map();
+      combined.forEach(t => uniqueMap.set(t.id, t));
+      const next = Array.from(uniqueMap.values());
+      saveToStorage('transactions', next);
+      return next;
+    });
+    
+    toast.success(`${newTxs.length} transactions importées`);
   }, [saveToStorage]);
 
-  const updatePeople = useCallback((p: PersonRelation[]) => {
-    setRawPeople(p);
-    saveToStorage('people', p);
+  const addTransaction = useCallback(async (tx: Transaction) => {
+    setTransactions(prev => {
+      const next = [tx, ...prev];
+      saveToStorage('transactions', next);
+      return next;
+    });
   }, [saveToStorage]);
 
-  const updateRules = useCallback((r: Rule[]) => {
-    setRules(r);
-    saveToStorage('rules', r);
+  const updateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
+    setTransactions(prev => {
+      const next = prev.map(t => t.id === id ? { ...t, ...updates } : t);
+      saveToStorage('transactions', next);
+      return next;
+    });
   }, [saveToStorage]);
 
-  const updateBudgets = useCallback((b: Entity[]) => { 
-    setBudgets(b); 
-    saveToStorage('budgets', b);
+  const deleteTransaction = useCallback(async (id: string) => {
+    setTransactions(prev => {
+      const next = prev.filter(t => t.id !== id);
+      saveToStorage('transactions', next);
+      return next;
+    });
   }, [saveToStorage]);
-
-  const updateGoals = useCallback((g: Entity[]) => { 
-    setGoals(g); 
-    saveToStorage('goals', g);
-  }, [saveToStorage]);
-
-  const updateAccounts = useCallback((a: Entity[]) => { 
-    setAccounts(a); 
-    saveToStorage('accounts', a);
-  }, [saveToStorage]);
-
-  const updateCategories = useCallback((c: Category[]) => { 
-    setCategories(c); 
-    saveToStorage('categories', c);
-  }, [saveToStorage]);
-
-  const people = useMemo(() => rawPeople.map(p => ({ ...p })), [rawPeople]);
 
   const value = useMemo(() => ({
-    transactions, budgets, goals, people, accounts, categories, rules, loading,
-    refreshData: loadData, 
-    updateTransactions, updateBudgets, updateGoals, updatePeople, updateAccounts, updateCategories, updateRules,
-  }), [transactions, budgets, goals, people, accounts, categories, rules, loading, loadData, updateTransactions, updateBudgets, updateGoals, updatePeople, updateAccounts, updateCategories, updateRules]);
+    transactions, budgets, goals, people: rawPeople, accounts, categories, rules, loading,
+    refreshData: loadData,
+    handleImport,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    updateTransactions: (txs: Transaction[]) => { setTransactions(txs); saveToStorage('transactions', txs); },
+    updateBudgets: (b: Budget[]) => { setBudgets(b); saveToStorage('budgets', b); },
+    updateGoals: (g: Goal[]) => { setGoals(g); saveToStorage('goals', g); },
+    updatePeople: (p: PersonRelation[]) => { setRawPeople(p); saveToStorage('people', p); },
+    updateAccounts: (a: Entity[]) => { setAccounts(a); saveToStorage('accounts', a); },
+    updateCategories: (c: Category[]) => { setCategories(c); saveToStorage('categories', c); },
+    updateRules: (r: Rule[]) => { setRules(r); saveToStorage('rules', r); },
+  }), [
+    transactions, budgets, goals, rawPeople, accounts, categories, rules, loading,
+    loadData, handleImport, addTransaction, updateTransaction, deleteTransaction, saveToStorage
+  ]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

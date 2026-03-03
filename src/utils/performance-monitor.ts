@@ -1,148 +1,123 @@
 /**
- * Performance Monitor - Lightweight system to detect memory issues
- * 
- * Usage in components:
- * import { useRenderTracker } from '@/utils/performance-monitor';
- * useRenderTracker('ComponentName');
+ * 🚀 Performance Monitor v2 - Ultra-Lightweight
+ * Optimisé pour zéro impact CPU/Ventilation.
  */
 
 import { useEffect, useRef } from 'react';
 
-// Track render counts per component
-const renderCounts = new Map<string, number>();
-const renderTimestamps = new Map<string, number[]>();
-
 // Configuration
-const RENDER_THRESHOLD = 50; // Warn if a component renders more than this
-const TIME_WINDOW = 10000; // 10 seconds window for tracking
 const ENABLE_MONITORING = process.env.NODE_ENV === 'development';
+const RENDER_THRESHOLD = 30;    // Seuil d'alerte (rendus par fenêtre)
+const TIME_WINDOW = 5000;       // Fenêtre de 5 secondes
+const MEMORY_CHECK_MS = 60000;  // 1 minute (suffisant pour détecter une fuite)
+
+// Stockage statique hors-composant pour éviter les re-renders
+const stats = new Map<string, { total: number; timestamps: number[] }>();
 
 /**
- * Hook to track component renders and detect potential issues
+ * 🔥 Hook : useRenderTracker
+ * Analyse les rendus sans ralentir le composant.
  */
 export function useRenderTracker(componentName: string) {
-  const renderCount = useRef(0);
-
   useEffect(() => {
     if (!ENABLE_MONITORING) return;
 
-    renderCount.current++;
-    const count = (renderCounts.get(componentName) || 0) + 1;
-    renderCounts.set(componentName, count);
-
-    // Track timestamp
-    const timestamps = renderTimestamps.get(componentName) || [];
     const now = Date.now();
-    
-    // Remove old timestamps outside the time window
-    const recentTimestamps = timestamps.filter(ts => now - ts < TIME_WINDOW);
-    recentTimestamps.push(now);
-    renderTimestamps.set(componentName, recentTimestamps);
+    let data = stats.get(componentName);
 
-    // Check for excessive renders in time window
-    if (recentTimestamps.length > RENDER_THRESHOLD) {
-      console.warn(
-        `⚠️ PERFORMANCE WARNING: ${componentName} rendered ${recentTimestamps.length} times in ${TIME_WINDOW / 1000}s`
-      );
+    if (!data) {
+      data = { total: 0, timestamps: [] };
+      stats.set(componentName, data);
     }
 
-    // Log every 10 renders for visibility
-    if (count % 10 === 0) {
-      console.log(`📊 ${componentName} render count: ${count}`);
+    data.total++;
+    data.timestamps.push(now);
+
+    // Nettoyage intelligent : On ne filtre que si on dépasse une certaine taille
+    if (data.timestamps.length > RENDER_THRESHOLD * 2) {
+      data.timestamps = data.timestamps.filter(ts => now - ts < TIME_WINDOW);
     }
-  });
+
+    // Alerte critique : Trop de rendus détectés
+    if (data.timestamps.length > RENDER_THRESHOLD) {
+      // On utilise requestIdleCallback pour ne pas bloquer le thread principal
+      const triggerWarning = () => {
+        console.warn(`⚠️ PERFORMANCE CRITIQUE: ${componentName} (> ${RENDER_THRESHOLD} renders en ${TIME_WINDOW/1000}s)`);
+        // On vide pour ne pas spammer l'alerte
+        data!.timestamps = [];
+      };
+
+      if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(triggerWarning);
+      } else {
+        setTimeout(triggerWarning, 1);
+      }
+    }
+  }, [componentName]); // ✅ Correction : Uniquement si le nom change
 }
 
 /**
- * Get render statistics for debugging
+ * 💾 Mesure de la mémoire optimisée
  */
-export function getRenderStats() {
-  const stats: Record<string, { total: number; recent: number }> = {};
+export function logMemoryUsage() {
+  if (!ENABLE_MONITORING || typeof window === 'undefined') return;
   
-  renderCounts.forEach((total, component) => {
-    const timestamps = renderTimestamps.get(component) || [];
-    const now = Date.now();
-    const recent = timestamps.filter(ts => now - ts < TIME_WINDOW).length;
-    
-    stats[component] = { total, recent };
-  });
+  const perf = window.performance as any;
+  if (perf && perf.memory) {
+    const { usedJSHeapSize, jsHeapSizeLimit } = perf.memory;
+    const usedMB = Math.round(usedJSHeapSize / 1048576);
+    const limitMB = Math.round(jsHeapSizeLimit / 1048576);
+    const usagePercent = (usedMB / limitMB) * 100;
 
-  return stats;
+    // On ne log que si c'est important (> 50% ou toutes les minutes)
+    if (usagePercent > 80) {
+      console.error(`🚨 MÉMOIRE CRITIQUE: ${usedMB}MB / ${limitMB}MB (${usagePercent.toFixed(1)}%)`);
+    } else {
+      // Log discret en groupe pour ne pas polluer la console
+      console.debug(`💾 Memory: ${usedMB}MB`);
+    }
+  }
 }
 
 /**
- * Reset all statistics (useful for testing)
- */
-export function resetRenderStats() {
-  renderCounts.clear();
-  renderTimestamps.clear();
-}
-
-/**
- * Print render statistics to console
- */
-export function printRenderStats() {
-  const stats = getRenderStats();
-  console.log('📊 Render Statistics:');
-  console.table(stats);
-}
-
-// Make stats accessible in browser console
-if (typeof window !== 'undefined') {
-  (window as any).fluxPerformance = {
-    getStats: getRenderStats,
-    printStats: printRenderStats,
-    reset: resetRenderStats,
-  };
-}
-
-/**
- * Hook to track expensive calculations
+ * ⏱️ Mesure des calculs lourds
  */
 export function useCalculationTracker(calculationName: string) {
-  const startTime = useRef(0);
-
   const start = () => {
-    if (!ENABLE_MONITORING) return;
-    startTime.current = performance.now();
+    if (!ENABLE_MONITORING) return 0;
+    return performance.now();
   };
 
-  const end = () => {
-    if (!ENABLE_MONITORING) return;
-    const duration = performance.now() - startTime.current;
+  const end = (startTime: number) => {
+    if (!ENABLE_MONITORING || startTime === 0) return;
+    const duration = performance.now() - startTime;
     
-    if (duration > 16) { // Longer than 1 frame (16.67ms)
-      console.warn(
-        `⏱️ SLOW CALCULATION: ${calculationName} took ${duration.toFixed(2)}ms`
-      );
+    if (duration > 16.6) { // Plus d'une frame à 60fps
+      console.warn(`⏱️ CALCUL LOURD: [${calculationName}] ${duration.toFixed(2)}ms`);
     }
   };
 
   return { start, end };
 }
 
-/**
- * Measure memory usage (if available)
- */
-export function logMemoryUsage() {
-  if (!ENABLE_MONITORING) return;
-  
-  if ('memory' in performance) {
-    const memory = (performance as any).memory;
-    const used = Math.round(memory.usedJSHeapSize / 1048576); // MB
-    const total = Math.round(memory.totalJSHeapSize / 1048576); // MB
-    const limit = Math.round(memory.jsHeapSizeLimit / 1048576); // MB
-    
-    console.log(`💾 Memory: ${used}MB / ${total}MB (limit: ${limit}MB)`);
-    
-    // Warn if we're using more than 80% of available memory
-    if (used > limit * 0.8) {
-      console.error(`🚨 MEMORY WARNING: Using ${((used / limit) * 100).toFixed(1)}% of available memory!`);
-    }
-  }
-}
+// Stats globales pour la console
+export const getRenderStats = () => Object.fromEntries(stats);
 
-// Auto-log memory every 30 seconds in development
 if (ENABLE_MONITORING && typeof window !== 'undefined') {
-  setInterval(logMemoryUsage, 30000);
+  // ✅ INITIALISATION UNIQUE
+  (window as any).fluxStats = getRenderStats;
+
+  // Check mémoire toutes les minutes au lieu de 30s
+  const memInterval = setInterval(logMemoryUsage, MEMORY_CHECK_MS);
+  
+  // Nettoyage automatique des stats globales toutes les 5 minutes pour éviter les fuites
+  const cleanInterval = setInterval(() => stats.clear(), 300000);
+
+  // Nettoyage si le module est déchargé (HMR)
+  if ((import.meta as any).hot) {
+    (import.meta as any).hot.dispose(() => {
+      clearInterval(memInterval);
+      clearInterval(cleanInterval);
+    });
+  }
 }

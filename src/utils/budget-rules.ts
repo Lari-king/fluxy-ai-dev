@@ -1,4 +1,4 @@
-import { Budget, BudgetRule } from '../../types/budget';
+import { Budget, BudgetRule } from '../types/budget';
 import { Transaction } from '@/utils/csv-parser';
 
 /**

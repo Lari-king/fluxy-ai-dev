@@ -1,38 +1,63 @@
-import { Transaction } from '@/utils/csv-parser'; // ✅ CORRECTION: chemin correct
+import { Transaction } from '@/utils/csv-parser';
 
 /**
- * Extract unique categories from transactions and merge with existing categories
+ * 🎯 EXTRACT CATEGORIES - VERSION COMPLÈTE
+ * Extrait les catégories ET sous-catégories en préservant la hiérarchie.
  */
 export function extractCategoriesFromTransactions(
-  transactions: Transaction[],
+  transactions: any[], 
   existingCategories: any[] = []
 ): any[] {
   const categoryMap = new Map<string, any>();
 
-  // Normalize category name for comparison (lowercase, trim, normalize spaces)
+  // Normalisation du nom pour la comparaison
   const normalizeKey = (name: string) => name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-  // Add existing categories first (using normalized keys)
+  // 1. On réintègre l'existant pour ne pas perdre les IDs ou couleurs déjà définis
   existingCategories.forEach(cat => {
-    const key = normalizeKey(cat.name);
+    // On crée une clé unique combinant nom et parent pour différencier 
+    // deux sous-catégories qui auraient le même nom mais des parents différents.
+    const key = normalizeKey(cat.name + (cat.parentId || ''));
     categoryMap.set(key, cat);
   });
 
-  // Extract categories from transactions
+  // 2. Extraction depuis les transactions
   transactions.forEach(txn => {
     if (!txn.category) return;
     
-    const key = normalizeKey(txn.category);
-    if (!categoryMap.has(key)) {
-      // Capitalize first letter for display
-      const displayName = txn.category.charAt(0).toUpperCase() + txn.category.slice(1).toLowerCase();
-      
-      categoryMap.set(key, {
-        id: key.replace(/\s+/g, '-'),
-        name: displayName,
-        color: generateCategoryColor(key),
+    // --- GESTION DU PARENT ---
+    const parentName = txn.category.charAt(0).toUpperCase() + txn.category.slice(1).toLowerCase();
+    const parentKey = normalizeKey(parentName);
+    
+    let parentId: string;
+
+    if (!categoryMap.has(parentKey)) {
+      parentId = parentKey.replace(/\s+/g, '-');
+      categoryMap.set(parentKey, {
+        id: parentId,
+        name: parentName,
+        color: generateCategoryColor(parentKey),
         icon: 'tag',
       });
+    } else {
+      parentId = categoryMap.get(parentKey).id;
+    }
+
+    // --- GESTION DE LA SOUS-CATÉGORIE (Correction cruciale) ---
+    if (txn.subCategory && txn.subCategory.trim() !== '') {
+      const subName = txn.subCategory.charAt(0).toUpperCase() + txn.subCategory.slice(1).toLowerCase();
+      // Clé unique pour la sous-catégorie liée à son parent
+      const subKey = normalizeKey(subName + parentId); 
+
+      if (!categoryMap.has(subKey)) {
+        categoryMap.set(subKey, {
+          id: `sub-${parentId}-${subKey.replace(/\s+/g, '-')}`,
+          name: subName,
+          parentId: parentId, // Liaison avec le parent
+          color: generateCategoryColor(subKey),
+          icon: 'tag',
+        });
+      }
     }
   });
 
@@ -40,87 +65,51 @@ export function extractCategoriesFromTransactions(
 }
 
 /**
- * Generate a consistent color for a category based on its name
+ * Génère une couleur cohérente basée sur le nom
  */
 export function generateCategoryColor(name: string): string {
-  const colors = [
-    '#3B82F6', // blue
-    '#10B981', // green
-    '#F59E0B', // amber
-    '#EF4444', // red
-    '#8B5CF6', // purple
-    '#EC4899', // pink
-    '#14B8A6', // teal
-    '#F97316', // orange
-    '#6366F1', // indigo
-    '#84CC16', // lime
-    '#06B6D4', // cyan
-    '#A855F7', // violet
-  ];
-
-  // Simple hash function to get consistent color for same name
+  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16', '#06B6D4', '#A855F7'];
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-
   return colors[Math.abs(hash) % colors.length];
 }
 
 /**
- * Get category object by name
+ * Retourne l'objet catégorie par son nom
  */
 export function getCategoryByName(name: string, categories: any[]): any | undefined {
   return categories.find(cat => cat.name === name);
 }
 
 /**
- * Get all unique category names from transactions
+ * Liste tous les noms uniques de catégories (utile pour les filtres)
  */
 export function getUniqueCategoryNames(transactions: Transaction[]): string[] {
   const categorySet = new Set<string>();
-
   transactions.forEach(txn => {
-    if (txn.category) {
-      categorySet.add(txn.category);
-    }
+    if (txn.category) categorySet.add(txn.category);
   });
-
   return Array.from(categorySet).sort();
 }
 
-/**
- * 🆕 Génère un ID unique pour une catégorie
- */
 export function generateCategoryId(): string {
   return `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-/**
- * 🆕 Vérifie si une catégorie peut être supprimée
- * (ne peut pas être supprimée si elle a des sous-catégories)
- */
 export function canDeleteCategory(categoryId: string, allCategories: any[]): boolean {
   return !allCategories.some(cat => cat.parentId === categoryId);
 }
 
-/**
- * 🆕 Obtient toutes les sous-catégories d'une catégorie parente
- */
 export function getSubcategories(parentId: string, allCategories: any[]): any[] {
   return allCategories.filter(cat => cat.parentId === parentId);
 }
 
-/**
- * 🆕 Obtient toutes les catégories racines (sans parent)
- */
 export function getRootCategories(allCategories: any[]): any[] {
   return allCategories.filter(cat => !cat.parentId);
 }
 
-/**
- * 🆕 Construit un arbre de catégories hiérarchique
- */
 export function buildCategoryTree(categories: any[]): {
   parents: any[];
   children: Record<string, any[]>;
@@ -129,9 +118,7 @@ export function buildCategoryTree(categories: any[]): {
     if (!cat.parentId) {
       acc.parents.push(cat);
     } else {
-      if (!acc.children[cat.parentId]) {
-        acc.children[cat.parentId] = [];
-      }
+      if (!acc.children[cat.parentId]) acc.children[cat.parentId] = [];
       acc.children[cat.parentId].push(cat);
     }
     return acc;

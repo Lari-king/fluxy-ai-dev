@@ -6,7 +6,7 @@
     "module": "ESNext",
     "skipLibCheck": true,
 
-    /* Bundler mode */
+    /* Bundler mode (important pour Vite) */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -14,23 +14,47 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Linting – très bon choix, on garde */
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Paths */
-    "baseUrl": ".",
+    /* Amélioration des paths – c'est la partie clé pour tes erreurs */
+    "baseUrl": "src",
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["*"],
+      "@components/*": ["components/*"],
+      "@contexts/*": ["contexts/*"],
+      "@features/*": ["features/*"],
+      "@hooks/*": ["hooks/*"],
+      "@services/*": ["services/*"],
+      "@types/*": ["types/*"],
+      "@utils/*": ["utils/*"],
+
+      // Alias spécifique ultra-intelligence (très utile pour ton module)
+      "@ultra/*": ["features/ultra-intelligence/*"],
+      "@ultra/types": ["features/ultra-intelligence/types/index.ts"],
+      "@ultra/hooks": ["features/ultra-intelligence/hooks/*"],
+      "@ultra/services": ["features/ultra-intelligence/services/*"],
+      "@ultra/components": ["features/ultra-intelligence/components/*"]
+    },
+
+    /* Optionnel mais souvent utile dans les projets React modernes */
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
   },
+
   "include": [
-    "src/**/*.ts", 
-    "src/**/*.tsx", 
+    "src/**/*.ts",
+    "src/**/*.tsx",
     "src/**/*.d.ts",
     "vite.config.ts"
   ],
-  "exclude": ["node_modules", "dist"]
+
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -4,7 +4,7 @@
  * Utilitaires pour gérer les transactions divisées
  */
 
-import { Transaction } from '../../contexts/DataContext';
+import { Transaction } from '@/contexts/DataContext';
 
 /**
  * Divise une transaction en plusieurs sous-transactions
@@ -14,26 +14,25 @@ export function splitTransaction(
   subTransactions: Partial<Transaction>[],
   hideOriginal: boolean,
   note?: string
-): Transaction[] {
-  const childIds = subTransactions.map(() => crypto.randomUUID());
+): { updatedOriginal: Transaction, children: Transaction[] } { // Retour structuré plus clair
   
-  // Créer les sous-transactions
-  const children: Transaction[] = subTransactions.map((subTxn, index) => ({
-    ...originalTransaction,
-    ...subTxn,
-    id: childIds[index],
+  const children: Transaction[] = subTransactions.map((subTxn) => ({
+    ...originalTransaction, // On garde tout (date, compte, etc.)
+    ...subTxn,             // On écrase avec les nouvelles valeurs (montant, cat)
+    id: crypto.randomUUID(),
     parentTransactionId: originalTransaction.id,
+    childTransactionIds: [], // Un enfant n'a pas d'enfants
+    isHidden: false,         // Un enfant doit être visible
   } as Transaction));
   
-  // Mettre à jour la transaction originale
   const updatedOriginal: Transaction = {
     ...originalTransaction,
-    childTransactionIds: childIds,
+    childTransactionIds: children.map(c => c.id),
     isHidden: hideOriginal,
     splitNote: note,
   };
   
-  return [updatedOriginal, ...children];
+  return { updatedOriginal, children };
 }
 
 /**

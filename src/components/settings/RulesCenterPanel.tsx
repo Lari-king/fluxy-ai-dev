@@ -1,7 +1,6 @@
 /**
  * 📝 RULES CENTER PANEL - REFONTE COMPLÈTE 2026
- * 
- * Améliorations :
+ * * Améliorations :
  * - Formulaire aéré avec plus d'espace
  * - Scroll optimisé (overflow-y-auto sur le body uniquement)
  * - Inputs plus grands et lisibles
@@ -11,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, Sparkles, Info } from 'lucide-react';
-import { Rule, RuleConditionType, RuleSeverity, RuleConditions, RuleActions } from '@/types/rules';
+import { Rule, RuleConditionType, RuleSeverity, RuleConditions, RuleActions } from '@/features/intelligence/types';
 
 import { RuleTypeSelector } from '@/components/settings/RuleTypeSelector';
 import { CategoryBudgetForm } from '@/components/settings/rule-forms/CategoryBudgetForm';
@@ -30,6 +29,13 @@ interface RulesCenterPanelProps {
   isCreating: boolean;
 }
 
+const INITIAL_ACTIONS: RuleActions = {
+  markAsAnomaly: true,
+  sendNotification: false,
+  autoTag: '',
+  preventDefault: false,
+};
+
 export function RulesCenterPanel({
   selectedRule,
   onSave,
@@ -47,17 +53,16 @@ export function RulesCenterPanel({
     type: 'category_budget',
     severity: 'warning',
     conditions: {},
-    actions: {
-      markAsAnomaly: true,
-      notifyUser: false,
-      preventTransaction: false,
-      alertMessage: '',
-    } as RuleActions,
+    actions: INITIAL_ACTIONS,
   });
 
+  // Synchronisation avec la règle sélectionnée ou le mode création
   useEffect(() => {
     if (selectedRule && !isCreating) {
-      setFormData(selectedRule);
+      setFormData({
+        ...selectedRule,
+        actions: selectedRule.actions || INITIAL_ACTIONS
+      });
       setStep('config');
     } else if (isCreating) {
       setStep('type');
@@ -68,12 +73,7 @@ export function RulesCenterPanel({
         type: 'category_budget',
         severity: 'warning',
         conditions: {},
-        actions: {
-          markAsAnomaly: true,
-          notifyUser: false,
-          preventTransaction: false,
-          alertMessage: '',
-        } as RuleActions,
+        actions: INITIAL_ACTIONS,
       });
     }
   }, [selectedRule, isCreating]);
@@ -83,6 +83,8 @@ export function RulesCenterPanel({
       ...prev,
       type,
       conditions: {},
+      // Pré-remplissage du nom basé sur le type si vide
+      name: prev.name || `Nouvelle règle ${type.replace('_', ' ')}`
     }));
     setStep('config');
   }, []);
@@ -91,16 +93,21 @@ export function RulesCenterPanel({
     setFormData(prev => ({ ...prev, conditions }));
   }, []);
 
-  const handleActionsChange = useCallback((actions: RuleActions) => {
-    setFormData(prev => ({ ...prev, actions }));
+  const handleActionsChange = useCallback((updates: Partial<RuleActions>) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      actions: { ...(prev.actions || INITIAL_ACTIONS), ...updates } 
+    }));
   }, []);
 
   const handleSave = useCallback(() => {
-    if (!formData.name) return;
+    if (!formData.name || !formData.type) return;
     onSave(formData);
   }, [formData, onSave]);
 
-  const isValid = useMemo(() => !!formData.name, [formData.name]);
+  const isValid = useMemo(() => {
+    return !!(formData.name && formData.name.trim().length > 2 && formData.type);
+  }, [formData.name, formData.type]);
 
   const renderConditionsForm = useCallback(() => {
     if (!formData.type) return null;
@@ -122,7 +129,7 @@ export function RulesCenterPanel({
     }
   }, [formData.type, formData.conditions, handleConditionsChange]);
 
-  // Vue vide
+  // Vue d'attente quand rien n'est sélectionné
   if (!isCreating && !selectedRule) {
     return (
       <div className="h-full flex items-center justify-center bg-black">
@@ -161,10 +168,10 @@ export function RulesCenterPanel({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-medium text-white/90">
-              {isCreating ? 'Nouvelle règle personnalisée' : selectedRule?.name}
+              {isCreating ? 'Nouvelle règle personnalisée' : formData.name}
             </h2>
             <p className="text-xs text-white/40 mt-1">
-              {step === 'type' ? 'Étape 1 : Choisissez le type' : 'Étape 2 : Configuration'}
+              {step === 'type' ? 'Étape 1 : Choisissez le type d\'analyse' : 'Étape 2 : Paramétrage des conditions'}
             </p>
           </div>
 
@@ -177,13 +184,12 @@ export function RulesCenterPanel({
         </div>
       </div>
 
-      {/* Body - SCROLL ICI UNIQUEMENT */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
+      {/* Body - SCROLLABLE */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         <div className="p-8 max-w-4xl mx-auto">
           
           <AnimatePresence mode="wait">
-            {/* ÉTAPE 1 : Type */}
-            {step === 'type' && isCreating && (
+            {step === 'type' && isCreating ? (
               <motion.div
                 key="type"
                 initial={{ opacity: 0, x: 20 }}
@@ -195,10 +201,7 @@ export function RulesCenterPanel({
                   onSelectType={handleTypeSelect} 
                 />
               </motion.div>
-            )}
-
-            {/* ÉTAPE 2 : Configuration */}
-            {step === 'config' && (
+            ) : (
               <motion.div
                 key="config"
                 initial={{ opacity: 0, x: 20 }}
@@ -213,125 +216,93 @@ export function RulesCenterPanel({
                     <h3 className="text-base font-medium text-white/90">Informations générales</h3>
                   </div>
 
-                  {/* Nom */}
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-white/60">Nom de la règle *</label>
+                    <label className="text-xs font-medium text-white/60 uppercase tracking-wider">Nom de la règle *</label>
                     <input
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="Ex: Limite Restaurants 150€/mois"
+                      placeholder="Ex: Alerte Frais Bancaires"
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white/90 focus:outline-none focus:border-cyan-500/50 focus:bg-white/10 transition-all placeholder:text-white/30"
                     />
                   </div>
 
-                  {/* Description */}
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-white/60">Description (optionnel)</label>
+                    <label className="text-xs font-medium text-white/60 uppercase tracking-wider">Description (optionnel)</label>
                     <textarea
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                      placeholder="Décrivez l'objectif de cette règle..."
+                      placeholder="Pourquoi avez-vous créé cette règle ?"
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white/90 focus:outline-none focus:border-cyan-500/50 focus:bg-white/10 transition-all placeholder:text-white/30 resize-none"
-                      rows={3}
+                      rows={2}
                     />
                   </div>
 
-                  {/* Sévérité */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-white/60">Niveau de sévérité</label>
-                    <select
-                      value={formData.severity}
-                      onChange={(e) => setFormData(prev => ({ ...prev, severity: e.target.value as RuleSeverity }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white/90 focus:outline-none focus:border-cyan-500/50 focus:bg-white/10 transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="info" className="bg-black">🔵 Information - Simple notification</option>
-                      <option value="warning" className="bg-black">⚠️ Avertissement - Situation à surveiller</option>
-                      <option value="error" className="bg-black">🔴 Critique - Action immédiate requise</option>
-                    </select>
-                  </div>
-
-                  {/* Activer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                    <div>
-                      <div className="text-sm font-medium text-white/90">Activer immédiatement</div>
-                      <div className="text-xs text-white/40 mt-1">La règle sera appliquée à toutes les transactions</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-white/60 uppercase tracking-wider">Sévérité</label>
+                      <select
+                        value={formData.severity}
+                        onChange={(e) => setFormData(prev => ({ ...prev, severity: e.target.value as RuleSeverity }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white/90 focus:outline-none focus:border-cyan-500/50 transition-all cursor-pointer"
+                      >
+                        <option value="info" className="bg-[#0A0A0A]">🔵 Information</option>
+                        <option value="warning" className="bg-[#0A0A0A]">⚠️ Avertissement</option>
+                        <option value="error" className="bg-[#0A0A0A]">🔴 Critique</option>
+                      </select>
                     </div>
-                    <button
-                      onClick={() => setFormData(prev => ({ ...prev, enabled: !prev.enabled }))}
-                      className={`relative w-14 h-7 rounded-full transition-all ${
-                        formData.enabled ? 'bg-cyan-500 shadow-lg shadow-cyan-500/50' : 'bg-white/20'
-                      }`}
-                    >
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
-                          formData.enabled ? 'translate-x-7' : ''
-                        }`}
-                      />
-                    </button>
+                    
+                    <div className="flex flex-col justify-end">
+                      <div className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-lg">
+                        <span className="text-sm font-medium text-white/90">État</span>
+                        <button
+                          onClick={() => setFormData(prev => ({ ...prev, enabled: !prev.enabled }))}
+                          className={`relative w-12 h-6 rounded-full transition-all ${
+                            formData.enabled ? 'bg-cyan-500' : 'bg-white/20'
+                          }`}
+                        >
+                          <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${formData.enabled ? 'translate-x-6' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Section : Conditions */}
+                {/* Section : Conditions Dynamiques */}
                 <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                  <div className="flex items-center gap-2 mb-5">
+                  <div className="flex items-center gap-2 mb-6">
                     <CheckCircle2 className="w-5 h-5 text-cyan-400" />
-                    <h3 className="text-base font-medium text-white/90">Conditions de déclenchement</h3>
+                    <h3 className="text-base font-medium text-white/90">Conditions de détection</h3>
                   </div>
-
                   {renderConditionsForm()}
                 </div>
 
                 {/* Section : Actions */}
-                <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-                  <div className="flex items-center gap-2 mb-4">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-6">
                     <Sparkles className="w-5 h-5 text-cyan-400" />
-                    <h3 className="text-base font-medium text-white/90">Actions automatiques</h3>
+                    <h3 className="text-base font-medium text-white/90">Comportement du moteur</h3>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                      <div>
-                        <div className="text-sm font-medium text-white/90">Marquer comme anomalie</div>
-                        <div className="text-xs text-white/40 mt-1">Apparaîtra dans la section Insights</div>
-                      </div>
-                      <button
-                        onClick={() => handleActionsChange({
-                          ...formData.actions!,
-                          markAsAnomaly: !formData.actions?.markAsAnomaly,
-                        })}
-                        className={`relative w-14 h-7 rounded-full transition-all ${
-                          formData.actions?.markAsAnomaly ? 'bg-cyan-500 shadow-lg shadow-cyan-500/50' : 'bg-white/20'
-                        }`}
-                      >
-                        <div
-                          className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
-                            formData.actions?.markAsAnomaly ? 'translate-x-7' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      onClick={() => handleActionsChange({ markAsAnomaly: !formData.actions?.markAsAnomaly })}
+                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                        formData.actions?.markAsAnomaly ? 'bg-cyan-500/10 border-cyan-500/50 text-white' : 'bg-white/5 border-white/10 text-white/40'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">Anomalie visuelle</span>
+                      {formData.actions?.markAsAnomaly && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
+                    </button>
 
-                    <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                      <div>
-                        <div className="text-sm font-medium text-white/90">Envoyer une notification</div>
-                        <div className="text-xs text-white/40 mt-1">Notification push instantanée</div>
-                      </div>
-                      <button
-                        onClick={() => handleActionsChange({
-                          ...formData.actions!,
-                          notifyUser: !formData.actions?.notifyUser,
-                        })}
-                        className={`relative w-14 h-7 rounded-full transition-all ${
-                          formData.actions?.notifyUser ? 'bg-cyan-500 shadow-lg shadow-cyan-500/50' : 'bg-white/20'
-                        }`}
-                      >
-                        <div
-                          className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
-                            formData.actions?.notifyUser ? 'translate-x-7' : ''
-                          }`}
-                        />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleActionsChange({ sendNotification: !formData.actions?.sendNotification })}
+                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                        formData.actions?.sendNotification ? 'bg-blue-500/10 border-blue-500/50 text-white' : 'bg-white/5 border-white/10 text-white/40'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">Notification push</span>
+                      {formData.actions?.sendNotification && <CheckCircle2 className="w-4 h-4 text-blue-400" />}
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -356,7 +327,7 @@ export function RulesCenterPanel({
                 onClick={() => setStep('type')}
                 className="px-5 py-2.5 rounded-lg border border-white/10 text-white/60 hover:bg-white/5 hover:text-white/90 transition-all text-sm font-medium"
               >
-                ← Précédent
+                ← Type de règle
               </button>
             )}
             
@@ -370,7 +341,7 @@ export function RulesCenterPanel({
               }`}
             >
               <CheckCircle2 className="w-4 h-4" />
-              {isCreating ? 'Créer la règle' : 'Enregistrer'}
+              {isCreating ? 'Finaliser la création' : 'Appliquer les modifications'}
             </button>
           </div>
         </div>

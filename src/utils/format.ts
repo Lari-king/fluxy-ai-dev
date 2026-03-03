@@ -101,3 +101,65 @@ export function formatDate(date: Date | string, format: 'short' | 'long' | 'full
 export function formatPercent(value: number, decimals: number = 1): string {
   return formatPercentage(value, decimals);
 }
+
+/**
+ * 🆕 Formate une date de manière compacte (DD/MM/AAAA)
+ */
+export function formatDateCompact(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(dateObj);
+}
+
+/**
+ * 🆕 Formate une date de manière complète
+ */
+export function formatDateFull(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(dateObj);
+}
+
+/**
+ * 🆕 Formate une date et heure
+ */
+export function formatDateTime(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(dateObj);
+}
+
+/**
+ * 🆕 Formate un type de transaction
+ */
+export function formatTransactionType(type: string): string {
+  const typeMap: Record<string, string> = {
+    'online': 'En ligne',
+    'physical': 'En magasin',
+    'transfer': 'Virement',
+    'direct_debit': 'Prélèvement',
+    'check': 'Chèque',
+    'cash': 'Espèces'
+  };
+
+  return typeMap[type] || type;
+}
+
+/**
+ * 🆕 Formate un identifiant court
+ */
+export function formatShortId(id: string, length = 8): string {
+  return id.substring(0, length);
+}

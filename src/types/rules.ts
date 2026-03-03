@@ -1,8 +1,6 @@
 /**
  * 🎯 SYSTÈME DE RÈGLES PERSONNALISÉES - VERSION AMÉLIORÉE 2026
- * 
- * Types discriminés par `type` pour un meilleur typage et autocomplétion.
- * Plus facile à maintenir quand on ajoute de nouveaux types de règles.
+ * * Types discriminés par `type` pour un meilleur typage et autocomplétion.
  */
 
 import { Transaction } from '@/contexts/DataContext';
@@ -41,10 +39,9 @@ export type ComparisonOperator =
   | 'not_equal';
 
 /**
- * Conditions de base communes (optionnel)
+ * Conditions de base communes
  */
-interface BaseConditions {
-  // Filtres additionnels applicables à presque toutes les règles
+export interface BaseConditions {
   includeCategories?: string[];
   excludeCategories?: string[];
   minAmount?: number;
@@ -55,57 +52,60 @@ interface BaseConditions {
 /**
  * Conditions spécifiques par type de règle
  */
-interface CategoryBudgetConditions extends BaseConditions {
-  category?: string;                    // Nom ou ID de la catégorie parent
-  subCategory?: string;                 // ← AJOUTÉ : nom de la sous-catégorie ciblée
-  maxAmount: number;                    // Obligatoire pour ce type
+export interface CategoryBudgetConditions extends BaseConditions {
+  category?: string;
+  subCategory?: string;
+  maxAmount: number;
   period: RulePeriod;
-  operator?: ComparisonOperator;        // Par défaut >= si non spécifié
+  operator?: ComparisonOperator;
 }
 
-interface MerchantFrequencyConditions extends BaseConditions {
+export interface MerchantFrequencyConditions extends BaseConditions {
   merchantKeywords: string[];
   merchantExact?: string;
   maxFrequency: number;
   frequencyPeriod: RulePeriod;
 }
 
-interface MerchantAmountConditions extends BaseConditions {
+export interface MerchantAmountConditions extends BaseConditions {
   merchantKeywords: string[];
   merchantExact?: string;
   merchantMaxAmount: number;
+  expectedAmount?: number;              // Requis par ruleEngine.ts
+  expectedAmountTolerance?: number;     // Requis par ruleEngine.ts
   operator?: ComparisonOperator;
 }
 
-interface PersonFlowConditions extends BaseConditions {
+export interface PersonFlowConditions extends BaseConditions {
   fromPersonId?: string;
   toPersonId?: string;
   personName?: string;
   flowType: 'incoming' | 'outgoing';
   expectedAmount?: number;
-  expectedAmountTolerance?: number;     // en pourcentage
+  expectedAmountTolerance?: number;
   maxDelayDays?: number;
   mustFollowTransaction?: boolean;
 }
 
-interface TimeRangeConditions extends BaseConditions {
-  startTime: string;                    // "HH:mm"
-  endTime: string;                      // "HH:mm"
-  daysOfWeek?: number[];                // 0 = dimanche, 6 = samedi
+export interface TimeRangeConditions extends BaseConditions {
+  startTime: string;
+  endTime: string;
+  daysOfWeek?: number[];
   timeRangeMaxAmount?: number;
   timeRangePeriod?: RulePeriod;
 }
 
-interface RecurringVarianceConditions extends BaseConditions {
+export interface RecurringVarianceConditions extends BaseConditions {
   recurringPatternId?: string;
   recurringDescription?: string;
+  expectedAmount?: number;              // Requis par ruleEngine.ts
   maxVariancePercent?: number;
   minVariancePercent?: number;
   checkIncrease?: boolean;
   checkDecrease?: boolean;
 }
 
-interface KeywordDetectionConditions extends BaseConditions {
+export interface KeywordDetectionConditions extends BaseConditions {
   keywords: string[];
   keywordMatchMode?: 'any' | 'all';
   caseSensitive?: boolean;
@@ -134,7 +134,7 @@ export interface Rule {
   enabled: boolean;
   type: RuleConditionType;
   severity: RuleSeverity;
-  conditions: RuleConditions;           // Maintenant typé précisément selon type
+  conditions: RuleConditions;
   actions: RuleActions;
   createdAt: string;
   updatedAt: string;
@@ -154,7 +154,7 @@ export interface RuleActions {
   alertMessage?: string;
   markAsAnomaly?: boolean;
   notifyUser?: boolean;
-  preventTransaction?: boolean;         // (futur - mode strict)
+  preventTransaction?: boolean;
   suggestAction?: string;
   customActions?: Array<{
     type: string;
@@ -174,19 +174,6 @@ export interface RuleViolation {
   message: string;
   severity: RuleSeverity;
   context?: {
-    // Contexte enrichi selon le type
-    categoryTotal?: number;
-    categoryBudget?: number;
-    categoryPercentUsed?: number;
-    merchantTransactionCount?: number;
-    merchantMaxFrequency?: number;
-    expectedTransaction?: Transaction;
-    delayDays?: number;
-    timeRangeTotal?: number;
-    timeRangeLimit?: number;
-    previousAmount?: number;
-    currentAmount?: number;
-    variance?: number;
     [key: string]: any;
   };
   acknowledged?: boolean;
@@ -225,7 +212,7 @@ export interface RuleStatistics {
   violationsByMonth: Record<string, number>;
   affectedTransactions: number;
   estimatedSavings?: number;
-  effectiveness: number;                // 0–100
+  effectiveness: number;
 }
 
 /**
