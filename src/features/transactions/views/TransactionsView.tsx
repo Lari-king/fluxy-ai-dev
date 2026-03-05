@@ -1,9 +1,8 @@
 /**
- * 💰 TRANSACTIONS VIEW - Container Principal
- * Version Corrigée : Anti-Boucle IA & Fix Types
+ * 💰 TRANSACTIONS VIEW - VERSION FINALE (FIX TYPES SPLIT)
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, startTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTransactions } from "../hooks/useTransactions";
 import { Transaction, ImportPreviewData } from "../types";
@@ -19,25 +18,13 @@ import { LeftPanel } from "../components/LeftPanel";
 import { ImportModal } from "../modals/ImportModal";
 import { TransactionFormDialog } from "../modals/TransactionFormDialog";
 import { SplitTransactionDialog } from "../modals/SplitTransactionDialog";
-import { CSVPreviewDialog } from "../modals/CSVPreviewDialog"; // ✅ Import rétabli
+import { CSVPreviewDialog } from "../modals/CSVPreviewDialog";
 
 export function TransactionsView() {
   const hooks = useTransactions();
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🛠️ PONT DE DÉBOGAGE GLOBAL
-  useEffect(() => {
-    if (hooks.allTransactions?.length > 0) {
-      (window as any).debugData = {
-        all: hooks.allTransactions,
-        filtered: hooks.transactions,
-        filters: hooks.filters,
-        currentPage: hooks.currentPage
-      };
-    }
-  }, [hooks.allTransactions, hooks.transactions, hooks.filters, hooks.currentPage]);
-
-  // États des modales et panneaux
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [showCSVPreview, setShowCSVPreview] = useState(false);
   const [csvPreviewData, setCsvPreviewData] = useState<ImportPreviewData | null>(null);
@@ -45,109 +32,67 @@ export function TransactionsView() {
   const [selectedTxForPanel, setSelectedTxForPanel] = useState<Transaction | null>(null);
   const [splittingTransaction, setSplittingTransaction] = useState<Transaction | null>(null);
 
-  // 🆕 Synchronisation du panneau de détails (Fix updatedAt)
-  useEffect(() => {
-    if (selectedTxForPanel) {
-      const freshTx = hooks.allTransactions.find(t => t.id === selectedTxForPanel.id);
-      // On compare les contenus si updatedAt n'existe pas
-      if (freshTx && JSON.stringify(freshTx) !== JSON.stringify(selectedTxForPanel)) {
-        setSelectedTxForPanel(freshTx);
-      }
-    }
-  }, [hooks.allTransactions, selectedTxForPanel]);
+  const hasActiveFilters = useMemo(() => {
+    const txIds = (hooks.filters as any).transactionIds;
+    return hooks.filters.searchTerm !== "" || (Array.isArray(txIds) && txIds.length > 0);
+  }, [hooks.filters]);
 
-  // Calcul du solde actuel mémoïsé
   const currentDatabaseBalance = useMemo(() => {
     return hooks.allTransactions.reduce((sum, t) => sum + t.amount, 0);
   }, [hooks.allTransactions]);
 
-  // Handlers stables
   const closeDetails = useCallback(() => setSelectedTxForPanel(null), []);
   const closeForm = useCallback(() => setEditingTransaction(null), []);
   const closeSplit = useCallback(() => setSplittingTransaction(null), []);
 
-  const handleNavigateToTx = useCallback((txId: string) => {
-    const targetTx = hooks.allTransactions.find(t => t.id === txId);
-    if (targetTx) {
-      hooks.setFilters({ ...hooks.filters, searchTerm: "" });
-      setSelectedTxForPanel(targetTx);
-      setTimeout(() => {
-        const element = document.querySelector(`[data-transaction-id="${txId}"]`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          element.classList.add('bg-cyan-500/20');
-          setTimeout(() => element.classList.remove('bg-cyan-500/20'), 2000);
-        }
-      }, 150);
-    }
-  }, [hooks.allTransactions, hooks.filters, hooks.setFilters]);
-
   /**
-   * 🛡️ HANDLERS FILTRES IA - AVEC DEBOUNCE ANTI-VENTILATION
+   * 🛠️ HANDLER SPLIT CORRIGÉ (Résout les erreurs 2554 et 2322)
+   * On adapte la signature pour correspondre à SplitTransactionDialog
    */
-  const onFilterByRecurring = useCallback((ids: string[]) => {
-    if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+  const handleSplitWrapper = useCallback((
+    original: Transaction, 
+    subTransactions: Transaction[], 
+    hideOriginal: boolean = true // Valeur par défaut pour le 3ème argument
+  ) => {
+    // On appelle le hook avec les 3 arguments attendus
+    hooks.handleSplit(original.id, subTransactions, hideOriginal);
+    closeSplit();
+  }, [hooks, closeSplit]);
 
-    filterTimeoutRef.current = setTimeout(() => {
-      console.log("🎯 [IA] Injection filtrée (Debounced 800ms)");
+  const handleClearFilters = useCallback(() => {
+    startTransition(() => {
       hooks.setFilters({ 
         ...hooks.filters, 
         searchTerm: "", 
         category: "all", 
         // @ts-ignore
-        transactionIds: ids 
+        transactionIds: [] 
       });
-    }, 800);
-  }, [hooks.filters, hooks.setFilters]);
-
-  const onFilterByAnomaly = useCallback((value: any) => {
-    hooks.setFilters({ ...hooks.filters, searchTerm: value as string });
-  }, [hooks.filters, hooks.setFilters]);
-
-  const handleSplitWrapper = useCallback(
-    async (original: Transaction, subTransactions: Transaction[], hideOriginal: boolean) => {
-      const preparedSubTransactions = subTransactions.map(sub => ({
-        ...sub,
-        date: sub.date || original.date,
-        id: sub.id || crypto.randomUUID()
-      }));
-      try {
-        await hooks.handleSplit(original.id, preparedSubTransactions, hideOriginal);
-      } catch (error) {
-        console.error("❌ Erreur lors du split:", error);
-      }
-    },
-    [hooks]
-  );
-
-  const handleShowPreview = useCallback((data: ImportPreviewData) => {
-    setCsvPreviewData(data);
-    setShowCSVPreview(true);
-    setShowImport(false);
-  }, []);
-
-  const handleConfirmImport = useCallback(async (transactions: Transaction[]) => {
-    const normalized = transactions.map(tx => ({
-      ...tx,
-      description: tx.description || (tx as any).merchant || 'Sans description',
-      category: typeof tx.category === 'string' ? tx.category : (tx.category as any)?.name || 'Non catégorisé',
-      amount: Number(tx.amount) || 0,
-      isHidden: tx.isHidden ?? false
-    }));
-
-    try {
-      await hooks.handleImport(normalized);
-      setShowCSVPreview(false);
-      setCsvPreviewData(null);
-    } catch (error) {
-      console.error("❌ ÉCHEC IMPORT :", error);
-    }
+      hooks.setCurrentPage(1);
+    });
   }, [hooks]);
 
-  const handleCancelPreview = useCallback(() => {
-    setShowCSVPreview(false);
-    setCsvPreviewData(null);
-  }, []);
+  const onFilterByRecurring = useCallback((ids: string[]) => {
+    if (filterTimeoutRef.current) clearTimeout(filterTimeoutRef.current);
+    filterTimeoutRef.current = setTimeout(() => {
+      startTransition(() => {
+        hooks.setFilters({ ...hooks.filters, searchTerm: "", transactionIds: ids } as any);
+        hooks.setCurrentPage(1);
+      });
+    }, 150);
+  }, [hooks]);
+
+  const handleNavigateToTx = useCallback((txId: string) => {
+    const targetTx = hooks.allTransactions.find(t => t.id === txId);
+    if (targetTx) {
+      handleClearFilters();
+      setSelectedTxForPanel(targetTx);
+      setTimeout(() => {
+        const element = document.querySelector(`[data-txid="${txId}"]`);
+        element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+  }, [hooks.allTransactions, handleClearFilters]);
 
   return (
     <div className="relative flex flex-col h-screen w-full overflow-hidden bg-[#050505] text-white">
@@ -164,30 +109,45 @@ export function TransactionsView() {
           onClearSelection={hooks.clearSelection}
           onBulkDelete={() => hooks.handleBulkDelete(hooks.selectedIds)}
           onBulkCategorize={(cat) => hooks.handleBulkCategorize(hooks.selectedIds, cat)}
-          onBulkCategorizeSubCategory={(subCat) => hooks.handleBulkCategorizeSubCategory(hooks.selectedIds, subCat)}
           onBulkAssignPerson={(personId) => hooks.handleBulkAssignPerson(hooks.selectedIds, personId)}
           onBulkSetStatus={(status) => hooks.handleBulkSetStatus(hooks.selectedIds, status)}
+          onToggleIntelligence={() => setIsLeftPanelOpen(prev => !prev)}
         />
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <LeftPanel
-          onFilterByTransaction={handleNavigateToTx}
-          onFilterByRecurring={onFilterByRecurring}
-          onFilterByAnomaly={onFilterByAnomaly}
-        />
+        <AnimatePresence initial={false}>
+          {isLeftPanelOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 340, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="border-r border-white/5 bg-[#050505] overflow-hidden flex-shrink-0"
+            >
+              <div className="w-[340px]">
+                <LeftPanel
+                  onFilterByTransaction={handleNavigateToTx}
+                  onFilterByRecurring={onFilterByRecurring}
+                  onFilterByAnomaly={(val) => startTransition(() => hooks.setFilters({...hooks.filters, searchTerm: val as string}))}
+                  onToggleCollapse={() => setIsLeftPanelOpen(false)}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="relative flex flex-1 flex-col min-w-0 overflow-hidden">
           {showCSVPreview && csvPreviewData ? (
             <CSVPreviewDialog
               data={csvPreviewData}
-              onConfirm={handleConfirmImport}
-              onClose={handleCancelPreview}
+              onConfirm={async (txs) => { await hooks.handleImport(txs); setShowCSVPreview(false); }}
+              onClose={() => setShowCSVPreview(false)}
               currentDatabaseBalance={currentDatabaseBalance}
             />
           ) : (
             <>
-              <div className="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar">
+              <div className="flex-1 overflow-hidden">
                 <TransactionTable
                   transactions={hooks.transactions}
                   selectedIds={hooks.selectedIds}
@@ -197,8 +157,9 @@ export function TransactionsView() {
                   onDelete={hooks.handleDelete}
                   onSplit={setSplittingTransaction}
                   onView={setSelectedTxForPanel}
+                  onClearFilters={hasActiveFilters ? handleClearFilters : undefined}
                   categories={hooks.categories}
-                  people={hooks.people}
+                  people={hooks.people} 
                 />
               </div>
 
@@ -217,12 +178,12 @@ export function TransactionsView() {
           )}
         </div>
 
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
           {selectedTxForPanel && (
             <motion.div
               initial={{ x: 450 }} animate={{ x: 0 }} exit={{ x: 450 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="relative z-40 w-[450px] border-l border-white/10 bg-[#0A0A0A] shadow-[-20px_0_50px_rgba(0,0,0,0.5)] overflow-hidden"
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="relative z-40 w-[450px] border-l border-white/10 bg-[#0A0A0A] shadow-2xl overflow-hidden"
             >
               <RightPanelDetails
                 transaction={selectedTxForPanel}
@@ -231,14 +192,6 @@ export function TransactionsView() {
                 onDelete={hooks.handleDelete}
                 onSplit={setSplittingTransaction}
                 onNavigateToParent={handleNavigateToTx}
-                onNavigateToChildren={(_parentId, childIds) => {
-                  if (childIds.length > 0) handleNavigateToTx(childIds[0]);
-                }}
-                onToggleHidden={async (id, currentStatus) => {
-                  const newStatus = !currentStatus;
-                  await hooks.handleUpdate(id, { isHidden: newStatus });
-                  setSelectedTxForPanel(prev => prev ? { ...prev, isHidden: newStatus } : null);
-                }}
                 categories={hooks.categories}
                 people={hooks.people}
                 allTransactions={hooks.allTransactions}
@@ -251,24 +204,30 @@ export function TransactionsView() {
       <ImportModal
         open={showImport}
         onClose={() => setShowImport(false)}
-        onShowPreview={handleShowPreview}
+        onShowPreview={(data) => { setCsvPreviewData(data); setShowCSVPreview(true); setShowImport(false); }}
         currentDatabaseBalance={currentDatabaseBalance}
       />
 
       <TransactionFormDialog
-        key={editingTransaction?.id || 'new-transaction-form'}
+        key={editingTransaction?.id || 'new'}
         open={!!editingTransaction}
         onClose={closeForm}
-        transaction={editingTransaction}
-        onSave={() => {}} 
+        transaction={editingTransaction || {} as Transaction}
+        onSave={async (updatedTx: Transaction) => { 
+          await hooks.handleUpdate(updatedTx.id, updatedTx); 
+          closeForm(); 
+        }}
       />
 
-      <SplitTransactionDialog
-        open={!!splittingTransaction}
-        onClose={closeSplit}
-        transaction={splittingTransaction}
-        onSplit={handleSplitWrapper}
-      />
+      {/* ✅ La modale utilise maintenant le wrapper corrigé */}
+      {splittingTransaction && (
+        <SplitTransactionDialog
+          open={!!splittingTransaction}
+          onClose={closeSplit}
+          transaction={splittingTransaction}
+          onSplit={handleSplitWrapper}
+        />
+      )}
     </div>
   );
 }

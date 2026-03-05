@@ -1,12 +1,18 @@
 /**
- * 🎯 LEFT PANEL - VERSION CONNECTÉE (COMPLÈTE + DIAGNOSTIC)
- * Ce panneau centralise l'intelligence financière (Insights, Récurrences, Anomalies).
- * Note : En accord avec la mise à jour du 2026-02-18, les anomalies temporelles 
- * sont désormais centralisées et le filtrage est transmis à l'InsightsPanel.
+ * 🎯 LEFT PANEL - VERSION INTEGRALE RESTAURÉE & OPTIMISÉE
+ * Intelligence financière, Sync People, Design Tesla & Fix CPU Leak
  */
 
-import { useState, Component, ReactNode, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
+import { useState, Component, ReactNode, useCallback, useMemo, useEffect } from 'react';
+import { 
+  ChevronLeft, 
+  Sparkles, 
+  X, 
+  Activity, 
+  Zap, 
+  ShieldCheck,
+  RefreshCw
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // UI & Components
@@ -18,52 +24,62 @@ import { ProjectionDetailsModal } from '@/features/predictions/components/Projec
 import { useTransactions } from '@/features/transactions/hooks/useTransactions';
 
 // ============================================================================
-// TYPES
+// TYPES & INTERFACES
 // ============================================================================
 
 interface LeftPanelProps {
   onFilterByTransaction?: (id: string) => void;
   onFilterByRecurring?: (ids: string[]) => void;
   onFilterByAnomaly?: (val: any) => void;
+  onToggleCollapse?: () => void;
 }
 
 // ============================================================================
-// ERROR BOUNDARY LÉGER
+// ERROR BOUNDARY - PROTECTION DU THREAD IA
 // ============================================================================
 
 class LeftPanelErrorBoundary extends Component<
   { children: ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; errorInfo: string | null }
 > {
-  state = { hasError: false };
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorInfo: null };
+  }
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorInfo: error.message };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('❌ [LeftPanel Error]:', error, errorInfo);
+    console.error('❌ [LeftPanel Critical Error]:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex h-full items-center justify-center p-8 text-center bg-black/40">
-          <div className="max-w-md">
-            <h3 className="text-lg font-bold text-red-400 mb-3">
-              Erreur dans le panneau Intelligence
-            </h3>
-            <p className="text-sm text-white/70 mb-6">
-              Une erreur inattendue s'est produite. Recharge la page ou réessaie plus tard.
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => window.location.reload()}
-              className="border-red-500/30 hover:bg-red-950/30 text-red-400"
-            >
-              Recharger la page
-            </Button>
+        <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-[#050505] border-r border-red-500/20">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center mb-6 border border-red-500/20">
+            <Activity className="w-8 h-8 text-red-500 animate-pulse" />
           </div>
+          <h3 className="text-lg font-bold text-white mb-2">Moteur IA Interrompu</h3>
+          <p className="text-xs text-white/40 mb-8 leading-relaxed max-w-[240px]">
+            Une erreur de rendu a été détectée dans l'analyse des flux. 
+            {this.state.errorInfo && (
+               <span className="block mt-2 text-red-400/60 font-mono">
+                 Code: {String(this.state.errorInfo).slice(0, 30)}...
+               </span>
+            )}
+          </p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => window.location.reload()}
+            className="border-white/10 hover:bg-white/5 text-white/70"
+          >
+            <RefreshCw className="w-3 h-3 mr-2" />
+            Réinitialiser le module
+          </Button>
         </div>
       );
     }
@@ -72,172 +88,190 @@ class LeftPanelErrorBoundary extends Component<
 }
 
 // ============================================================================
-// COMPOSANT PRINCIPAL
+// COMPOSANT PRINCIPAL : LEFT PANEL
 // ============================================================================
 
 export function LeftPanel({
   onFilterByTransaction,
   onFilterByRecurring,
   onFilterByAnomaly,
+  onToggleCollapse,
 }: LeftPanelProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  // --- ÉTATS ---
   const [selectedProjection, setSelectedProjection] = useState<any>(null);
+  const [internalView, setInternalView] = useState<'main' | 'details'>('main');
 
-  // 🔄 RÉCUPÉRATION DES DONNÉES
-  const { transactions, categories, isLoading } = useTransactions();
+  // --- DATA HOOKS ---
+  const { 
+    allTransactions = [], 
+    categories = [], 
+    people = [], 
+    filters 
+  } = useTransactions();
 
-  // 🔍 LOGS DE DIAGNOSTIC - FLUX DE DONNÉES
-  useEffect(() => {
-    console.group("🧠 [LeftPanel Intelligence]");
-    console.log("Statut Loading:", isLoading);
-    console.log("Transactions transmises à l'IA:", transactions?.length || 0);
-    if (transactions?.length > 0) {
-      console.log("Exemple de Data:", transactions[0].description, transactions[0].amount);
-    }
-    console.groupEnd();
-  }, [transactions, isLoading]);
+  // ⚡ OPTIMISATION CPU : On stabilise les data passées aux enfants
+  const memoizedTransactions = useMemo(() => allTransactions, [allTransactions.length]);
+  const memoizedPeople = useMemo(() => people, [people.length]);
 
-  const handleShowProjectionDetails = (projection: any) => {
+  // --- LOGIQUE DE DÉTECTION ---
+  const isFiltering = useMemo(() => {
+    const txIds = (filters as any)?.transactionIds;
+    return filters.searchTerm !== "" || (Array.isArray(txIds) && txIds.length > 0);
+  }, [filters]);
+
+  // --- HANDLERS ---
+  const handleToggle = useCallback(() => {
+    if (onToggleCollapse) onToggleCollapse();
+  }, [onToggleCollapse]);
+
+  const openProjection = useCallback((projection: any) => {
     setSelectedProjection(projection);
-  };
+    setInternalView('details');
+  }, []);
 
-  const handleCloseProjectionDetails = () => {
-    setSelectedProjection(null);
-  };
+  const closeProjection = useCallback(() => {
+    setInternalView('main');
+    // On attend la fin de l'animation AnimatePresence (300ms) pour nettoyer la data
+    setTimeout(() => setSelectedProjection(null), 300);
+  }, []);
+
+  // Monitorage stabilisé
+  useEffect(() => {
+    if (memoizedTransactions.length > 0) {
+      console.log("🧠 [LeftPanel] Data injection stabilized:", {
+        txCount: memoizedTransactions.length,
+        peopleCount: memoizedPeople.length
+      });
+    }
+  }, [memoizedTransactions.length, memoizedPeople.length]);
 
   return (
-    <>
-      {/* Toggle Button (visible quand le panneau est réduit) */}
-      <AnimatePresence>
-        {!isOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-50 pointer-events-auto"
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsOpen(true)}
-              className="rounded-l-none rounded-r-xl bg-[#0A0A0A] border border-l-0 border-white/10 text-white hover:bg-white/5 hover:text-cyan-400 h-12 w-8 shadow-2xl"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Main Panel Container */}
-      <motion.div
-        initial={false}
-        animate={{
-          width: isOpen ? 380 : 0,
-          opacity: isOpen ? 1 : 0,
-        }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="relative h-full border-r border-white/10 bg-[#0A0A0A] flex flex-col overflow-hidden shrink-0"
-      >
-        {/* Header Section */}
-        <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white/[0.01]">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 flex items-center justify-center border border-white/5 shadow-inner">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white tracking-tight">Intelligence</h2>
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
-                </span>
-                <p className="text-[10px] text-white/40 uppercase font-black tracking-widest">
-                  Temps Réel
-                </p>
-              </div>
-            </div>
+    <div className="relative h-full flex flex-col bg-[#050505] overflow-hidden w-full border-r border-white/5 shadow-[20px_0_50px_rgba(0,0,0,0.5)]">
+      
+      {/* 🟢 HEADER LUXE */}
+      <div className="relative flex items-center justify-between p-5 border-b border-white/5 bg-gradient-to-b from-white/[0.03] to-transparent z-10">
+        <div 
+          className="flex items-center gap-4 cursor-pointer group"
+          onClick={handleToggle}
+        >
+          <div className={`relative w-10 h-10 rounded-2xl flex items-center justify-center border transition-all duration-700 ${
+            isFiltering 
+              ? 'bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.4)]' 
+              : 'bg-white/[0.03] border-white/10 group-hover:bg-white/10 group-hover:border-white/20'
+          }`}>
+            <Sparkles className={`w-5 h-5 ${
+              isFiltering ? 'text-cyan-400 scale-110' : 'text-white/40 group-hover:text-cyan-400'
+            } transition-all duration-500`} />
+            
+            {isFiltering && (
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+              </span>
+            )}
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsOpen(false)}
-            className="text-white/20 hover:text-white hover:bg-white/5 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Dynamic Content Area */}
-        <LeftPanelErrorBoundary>
-          <div className="flex-1 relative flex flex-col overflow-hidden">
-            <AnimatePresence mode="wait">
-              {selectedProjection ? (
-                // VUE : DÉTAILS D'UNE PROJECTION
-                <motion.div
-                  key="projection-details"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className="flex-1 flex flex-col bg-black/40"
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black text-white tracking-[0.1em] uppercase">Intelligence</h2>
+              {isFiltering && (
+                <motion.span 
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="text-[9px] bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/30 font-bold flex items-center gap-1"
                 >
-                  <div className="p-4 border-b border-white/5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCloseProjectionDetails}
-                      className="w-full justify-start text-white/60 hover:text-white hover:bg-white/5 flex items-center gap-2 group"
-                    >
-                      <X className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                      <span className="text-xs font-bold uppercase tracking-tighter">
-                        Fermer la projection
-                      </span>
-                    </Button>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    <ProjectionDetailsModal
-                      projection={selectedProjection}
-                      onClose={handleCloseProjectionDetails}
-                    />
-                  </div>
-                </motion.div>
-              ) : (
-                // VUE : TABLEAU DE BORD INSIGHTS (Par défaut)
-                <motion.div
-                  key="insights-dashboard"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex-1 overflow-y-auto custom-scrollbar"
-                >
-                  <InsightsPanel
-                    transactions={transactions}
-                    categories={categories}
-                    onFilterByTransaction={onFilterByTransaction}
-                    onFilterByRecurring={onFilterByRecurring}
-                    onFilterByAnomaly={onFilterByAnomaly}
-                    onShowProjectionDetails={handleShowProjectionDetails}
-                  />
-                </motion.div>
+                  <Zap className="w-2.5 h-2.5 fill-current" /> FOCUS
+                </motion.span>
               )}
-            </AnimatePresence>
-          </div>
-        </LeftPanelErrorBoundary>
-
-        {/* Footer info */}
-        <div className="p-3 border-t border-white/5 bg-black/20">
-          <div className="flex justify-between items-center px-2">
-            <span className="text-[9px] text-white/20 font-medium uppercase tracking-widest">
-              Flux v2.4 stable
-            </span>
-            <div className="flex gap-1">
-              <div className={`w-1 h-1 rounded-full ${isLoading ? 'bg-orange-500/40' : 'bg-green-500/40'}`} />
-              <div className="w-1 h-1 rounded-full bg-green-500/40" />
             </div>
+            <p className="text-[9px] text-white/20 uppercase font-black tracking-[0.2em] mt-0.5">Engine v2.6.4</p>
           </div>
         </div>
-      </motion.div>
-    </>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggle}
+          className="w-8 h-8 p-0 text-white/20 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </Button>
+      </div>
+
+      {/* 🔵 ZONE DE CONTENU DYNAMIQUE */}
+      <LeftPanelErrorBoundary>
+        <div className="flex-1 relative flex flex-col overflow-hidden">
+          <AnimatePresence mode="wait">
+            {internalView === 'details' ? (
+              <motion.div
+                key="projection-details"
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 30 }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="flex-1 flex flex-col bg-[#050505]"
+              >
+                <div className="p-4 border-b border-white/5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={closeProjection}
+                    className="w-full justify-start text-white/40 hover:text-white flex items-center gap-3 h-10 px-4 rounded-xl border border-white/5 transition-all group"
+                  >
+                    <X className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Quitter l'analyse</span>
+                  </Button>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  <ProjectionDetailsModal
+                    projection={selectedProjection}
+                    onClose={closeProjection}
+                  />
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="insights-dashboard"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="flex-1 overflow-y-auto custom-scrollbar"
+              >
+                <InsightsPanel
+                  transactions={memoizedTransactions}
+                  categories={categories}
+                  // @ts-ignore
+                  people={memoizedPeople} 
+                  onFilterByTransaction={onFilterByTransaction}
+                  onFilterByRecurring={onFilterByRecurring}
+                  onFilterByAnomaly={onFilterByAnomaly}
+                  onShowProjectionDetails={openProjection}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </LeftPanelErrorBoundary>
+
+      {/* 🔘 FOOTER STATUT */}
+      <div className="p-4 border-t border-white/5 bg-gradient-to-t from-black/40 to-transparent">
+        <div className="flex justify-between items-center bg-white/[0.02] border border-white/5 rounded-xl p-3">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-4 h-4 text-green-500/60" />
+            <div className="flex flex-col">
+              <span className="text-[9px] text-white/60 font-black uppercase tracking-widest">Calcul Local</span>
+              <span className="text-[8px] text-white/20 font-medium">No Cloud Analysis</span>
+            </div>
+          </div>
+          <div className="h-1 w-8 rounded-full bg-white/5 overflow-hidden">
+            <motion.div 
+              animate={{ x: [-32, 32] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="h-full w-4 bg-cyan-500/40"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

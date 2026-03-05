@@ -1,12 +1,11 @@
 /**
  * ⚡ COMMAND BAR - SYSTÈME DE CONTRÔLE AVANCÉ
- * Version : 2.0.5 (Full Expanded & SubCat Fixed)
+ * Version : 2.1.0 (Focus Sync & Intelligence Toggle)
  * * Cette barre de commande gère :
  * 1. La recherche plein texte avec debounce
  * 2. Le filtrage multi-critères (Catégories, Sous-cat, Personnes)
- * 3. La gestion des plages de dates et de montants (Valeur absolue)
- * 4. Les actions de masse (Bulk) avec protection de Z-index
- * * DESIGN : Glassmorphism, Animations Framer Motion, Accessibilité Z-index.
+ * 3. Le Toggle Intelligence (LeftPanel)
+ * 4. Les actions de masse (Bulk)
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -14,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, X, Filter, FolderTree, Tags, User, DollarSign,
   Calendar, Tag, Zap, CheckCircle, Trash2, Upload, ChevronDown,
-  AlertCircle, Settings2, BarChart3
+  BarChart3, Sparkles
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -46,16 +45,13 @@ interface CommandBarProps {
   onBulkAssignPerson?: (personId: string) => void;
   onBulkSetStatus?: (status: string) => void;
   onBulkDelete?: () => void;
+  onToggleIntelligence?: () => void; // ✅ Ajouté pour corriger l'erreur 2322
 }
 
 // ============================================================================
 // 🛠️ SOUS-COMPOSANTS INTERNES
 // ============================================================================
 
-/**
- * Input avec délai de réflexion (Debounce)
- * Évite de déclencher le filtrage à chaque touche pressée
- */
 interface DebouncedInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange'> {
   value: string;
   onChange: (value: string) => void;
@@ -69,9 +65,7 @@ const DebouncedInput = React.memo<DebouncedInputProps>(({
   ...props 
 }) => {
   const [innerValue, setInnerValue] = React.useState(value);
-  
   React.useEffect(() => setInnerValue(value), [value]);
-  
   React.useEffect(() => {
     const timer = setTimeout(() => {
       if (innerValue !== value) onChange(innerValue);
@@ -88,11 +82,6 @@ const DebouncedInput = React.memo<DebouncedInputProps>(({
   );
 });
 
-DebouncedInput.displayName = 'DebouncedInput';
-
-/**
- * Sélecteur de plage de montants
- */
 const AmountRangePicker = React.memo<{
   min: string;
   max: string;
@@ -100,9 +89,9 @@ const AmountRangePicker = React.memo<{
 }>(({ min, max, onChange }) => (
   <div className="space-y-2 px-1">
     <label className="flex items-center gap-2 text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">
-      <DollarSign className="w-3 h-3 text-emerald-400" /> Montants (Absolus)
+      <DollarSign className="w-3 h-3 text-emerald-400" /> Montants
     </label>
-    <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl p-1 backdrop-blur-xl group focus-within:border-emerald-500/30 transition-all">
+    <div className="flex items-center bg-white/5 border border-white/10 rounded-2xl p-1 backdrop-blur-xl focus-within:border-emerald-500/30 transition-all">
       <DebouncedInput
         type="number"
         placeholder="Min"
@@ -122,9 +111,6 @@ const AmountRangePicker = React.memo<{
   </div>
 ));
 
-/**
- * Sélecteur de plage de dates
- */
 const DateRangePicker = React.memo<{
   from: string;
   to: string;
@@ -132,25 +118,21 @@ const DateRangePicker = React.memo<{
 }>(({ from, to, onChange }) => (
   <div className="space-y-2 px-1">
     <label className="flex items-center gap-2 text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">
-      <Calendar className="w-3 h-3 text-amber-400" /> Période Temporelle
+      <Calendar className="w-3 h-3 text-amber-400" /> Période
     </label>
     <div className="grid grid-cols-2 gap-2">
-      <div className="relative group">
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => onChange(e.target.value, to)}
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-xs text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
-        />
-      </div>
-      <div className="relative group">
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => onChange(from, e.target.value)}
-          className="w-full bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-xs text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
-        />
-      </div>
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-xs text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
+      />
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        className="w-full bg-white/5 border border-white/10 rounded-xl px-2 py-2 text-xs text-white outline-none focus:border-amber-500/50 transition-all [color-scheme:dark]"
+      />
     </div>
   </div>
 ));
@@ -171,13 +153,18 @@ export function CommandBar({
   onImport,
   onBulkDelete,
   onBulkCategorize,
-  onBulkCategorizeSubCategory,
-  onBulkSetStatus
+  onBulkSetStatus,
+  onToggleIntelligence // ✅ Reçu ici
 }: CommandBarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Détecte si le mode Focus (provenant de l'Intelligence) est actif
+  const isFocusActive = useMemo(() => {
+    return (filters as any).transactionIds?.length > 0;
+  }, [filters]);
+
   // --------------------------------------------------------------------------
-  // 📊 CALCUL DES COMPTEURS (MEMOÏSÉ)
+  // 📊 CALCUL DES COMPTEURS
   // --------------------------------------------------------------------------
 
   const transactionCounts = useMemo(() => {
@@ -186,8 +173,7 @@ export function CommandBar({
       if (t.category) {
         counts[t.category] = (counts[t.category] || 0) + 1;
         if (t.subCategory) {
-          counts[`${t.category}__${t.subCategory}`] = 
-            (counts[`${t.category}__${t.subCategory}`] || 0) + 1;
+          counts[`${t.category}__${t.subCategory}`] = (counts[`${t.category}__${t.subCategory}`] || 0) + 1;
         }
       }
     });
@@ -206,35 +192,22 @@ export function CommandBar({
   }, [categories, transactionCounts, transactions.length]);
 
   const subCategories = useMemo(() => {
-    // Si aucune catégorie n'est sélectionnée, on ne peut pas choisir de sous-catégorie
     if (!filters.category || filters.category === 'all') return [];
-    
     const parent = categories.find(c => c.id === filters.category || c.name === filters.category);
     if (!parent) return [];
-
     const children = categories.filter(c => c.parentId === parent.id);
     return [
       { id: 'all', name: 'Toutes les sous-cat.' },
-      ...children.map(c => {
-        // Logique de comptage hybride (Nom ou ID)
-        const count = transactionCounts[`${parent.id}__${c.id}`] || 
-                      transactionCounts[`${parent.name}__${c.name}`] || 
-                      transactionCounts[`${parent.id}__${c.name}`] || 0;
-        return {
-          ...c,
-          count: count
-        };
-      })
+      ...children.map(c => ({
+        ...c,
+        count: transactionCounts[`${parent.id}__${c.id}`] || transactionCounts[`${parent.name}__${c.name}`] || 0
+      }))
     ];
   }, [filters.category, categories, transactionCounts]);
 
-  // --------------------------------------------------------------------------
-  // ⚙️ HANDLERS & LOGIQUE
-  // --------------------------------------------------------------------------
-
   const handleReset = useCallback(() => {
     onFilterChange({
-      ...filters, // On garde les dates par sécurité
+      ...filters,
       searchTerm: '',
       category: 'all',
       subCategory: 'all',
@@ -244,30 +217,47 @@ export function CommandBar({
       amountMin: '',
       amountMax: '',
       recurring: 'all',
-      splitStatus: 'all'
+      splitStatus: 'all',
+      // @ts-ignore
+      transactionIds: []
     });
   }, [onFilterChange, filters]);
 
-  // --------------------------------------------------------------------------
-  // 🎨 RENDU UI
-  // --------------------------------------------------------------------------
-
   return (
     <div className="w-full p-6">
-      <div className="relative z-50 bg-[#0A0A0A]/60 backdrop-blur-3xl border border-white/10 rounded-2xl p-4 shadow-2xl overflow-visible">
+      <div className={`relative z-50 bg-[#0A0A0A]/60 backdrop-blur-3xl border rounded-2xl p-4 shadow-2xl transition-all duration-500 ${
+        isFocusActive ? 'border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.1)]' : 'border-white/10'
+      }`}>
         
-        {/* LIGNE SUPÉRIEURE - ACTIONS PRIMAIRES */}
         <div className="flex items-center gap-4">
-          
+          {/* TOGGLE INTELLIGENCE */}
+          <button
+            onClick={onToggleIntelligence}
+            className="p-3.5 rounded-xl bg-white/5 border border-white/10 text-white/40 hover:text-cyan-400 hover:border-cyan-500/30 transition-all group"
+            title="Intelligence Artificielle"
+          >
+            <Sparkles className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          </button>
+
           <div className="relative flex-1 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-cyan-400 transition-colors" />
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${
+              isFocusActive ? 'text-cyan-400' : 'text-white/20 group-focus-within:text-cyan-400'
+            }`} />
             <DebouncedInput
               type="text"
               value={filters.searchTerm}
               onChange={(value) => onFilterChange({ ...filters, searchTerm: value })}
-              placeholder="Rechercher par marchand, ville, ou libellé..."
+              placeholder={isFocusActive ? "Filtrage intelligent actif..." : "Rechercher un marchand, ville, libellé..."}
               className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3.5 text-sm text-white outline-none focus:border-cyan-500/40 focus:bg-white/[0.08] transition-all placeholder:text-white/20"
             />
+            {isFocusActive && (
+               <button 
+                 onClick={handleReset}
+                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 bg-cyan-500/20 text-cyan-400 rounded-md hover:bg-cyan-500/30 transition-colors"
+               >
+                 <X className="w-3.5 h-3.5" />
+               </button>
+            )}
           </div>
 
           <button
@@ -285,32 +275,22 @@ export function CommandBar({
           <div className="flex items-center gap-3 min-w-fit">
             {selectedCount > 0 ? (
               <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
+                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                 className="flex items-center gap-2 bg-cyan-500/20 border border-cyan-500/40 px-2 py-1.5 rounded-xl"
               >
                 <span className="px-3 text-xs font-black text-cyan-400 uppercase tracking-tighter">
                   {selectedCount} SÉLECTIONNÉES
                 </span>
-                <button
-                  onClick={onClearSelection}
-                  className="p-2 hover:bg-white/10 text-white/40 hover:text-white rounded-lg transition-colors"
-                >
+                <button onClick={onClearSelection} className="p-2 hover:bg-white/10 text-white/40 hover:text-white rounded-lg transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </motion.div>
             ) : (
               <>
-                <button
-                  onClick={onImport}
-                  className="bg-white/5 border border-white/10 text-white px-5 py-3.5 rounded-xl font-black hover:bg-white/10 transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest"
-                >
+                <button onClick={onImport} className="bg-white/5 border border-white/10 text-white px-5 py-3.5 rounded-xl font-black hover:bg-white/10 transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest">
                   <Upload className="w-4 h-4" /> IMPORTER
                 </button>
-                <button
-                  onClick={onAddManual}
-                  className="bg-white text-black px-6 py-3.5 rounded-xl font-black hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest shadow-lg shadow-white/5"
-                >
+                <button onClick={onAddManual} className="bg-white text-black px-6 py-3.5 rounded-xl font-black hover:bg-cyan-400 hover:scale-[1.02] transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest shadow-lg shadow-white/5">
                   <Plus className="w-4 h-4" /> NOUVEAU
                 </button>
               </>
@@ -318,59 +298,42 @@ export function CommandBar({
           </div>
         </div>
 
-        {/* PANNEAU DE FILTRES DÉPLOYABLE */}
         <AnimatePresence>
           {isExpanded && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: "circOut" }}
               className="overflow-visible"
             >
               <div className="pt-8 mt-6 border-t border-white/10">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-6 relative z-[60]">
-                  
-                  {/* SELECT CATÉGORIE */}
                   <FilterSelect
                     label="Catégorie Principale"
                     icon={FolderTree}
                     value={filters.category}
                     options={parentCategories}
-                    onChange={(v) => {
-                      // Quand on change de catégorie, on réinitialise obligatoirement la sous-cat
-                      onFilterChange({ ...filters, category: v, subCategory: 'all' });
-                    }}
+                    onChange={(v) => onFilterChange({ ...filters, category: v, subCategory: 'all' })}
                   />
-                  
-                  {/* SELECT SOUS-CATÉGORIE - FIX: On envoie l'ID ou le Nom selon ce qui est dispo */}
                   <FilterSelect
                     label="Sous-Catégorie"
                     icon={Tags}
                     value={filters.subCategory}
                     options={subCategories}
                     disabled={subCategories.length <= 1}
-                    onChange={(v) => {
-                      // On passe directement la valeur sélectionnée (nom ou id)
-                      onFilterChange({ ...filters, subCategory: v });
-                    }}
+                    onChange={(v) => onFilterChange({ ...filters, subCategory: v })}
                   />
-                  
-                  {/* SELECT RELATION */}
                   <FilterSelect
-                    label="Personne / Relation"
+                    label="Relation"
                     icon={User}
                     value={filters.person}
                     options={[{ id: 'all', name: 'Tout le monde' }, ...people]}
                     onChange={(v) => onFilterChange({ ...filters, person: v })}
                   />
-                  
                   <AmountRangePicker
                     min={filters.amountMin}
                     max={filters.amountMax}
                     onChange={(min, max) => onFilterChange({ ...filters, amountMin: min, amountMax: max })}
                   />
-                  
                   <DateRangePicker
                     from={filters.dateFrom}
                     to={filters.dateTo}
@@ -378,22 +341,12 @@ export function CommandBar({
                   />
                 </div>
 
-                {/* ZONES ACTIONS DE MASSE */}
                 {selectedCount > 0 && (
-                  <motion.div 
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    className="mt-8 p-5 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 flex flex-wrap gap-4 items-center justify-between shadow-inner"
-                  >
+                  <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mt-8 p-5 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 flex flex-wrap gap-4 items-center justify-between shadow-inner">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-cyan-500/20 rounded-lg">
-                        <Zap className="w-4 h-4 text-cyan-400" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Actions groupées</p>
-                      </div>
+                      <div className="p-2 bg-cyan-500/20 rounded-lg"><Zap className="w-4 h-4 text-cyan-400" /></div>
+                      <p className="text-[10px] font-black text-cyan-400 uppercase tracking-widest">Actions groupées</p>
                     </div>
-                    
                     <div className="flex flex-wrap gap-2 relative z-[70]">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -405,58 +358,30 @@ export function CommandBar({
                           <DropdownMenuLabel className="text-[10px] text-white/40 uppercase p-3">Catégories</DropdownMenuLabel>
                           <DropdownMenuSeparator className="bg-white/5" />
                           {categories.filter(c => !c.parentId).map(c => (
-                            <DropdownMenuItem
-                              key={c.id}
-                              onClick={() => onBulkCategorize?.(c.name)}
-                              className="cursor-pointer hover:bg-white/10 py-2.5 px-4"
-                            >
+                            <DropdownMenuItem key={c.id} onClick={() => onBulkCategorize?.(c.name)} className="cursor-pointer hover:bg-white/10 py-2.5 px-4">
                               {c.name}
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuContent>
                       </DropdownMenu>
-
-                      <button
-                        onClick={() => onBulkSetStatus?.('confirmed')}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all"
-                      >
+                      <button onClick={() => onBulkSetStatus?.('confirmed')} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all">
                         <CheckCircle className="w-3.5 h-3.5" /> Valider
                       </button>
-
-                      <button
-                        onClick={onBulkDelete}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] font-bold text-red-400 hover:bg-red-500/20 transition-all"
-                      >
+                      <button onClick={onBulkDelete} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-[11px] font-bold text-red-400 hover:bg-red-500/20 transition-all">
                         <Trash2 className="w-3.5 h-3.5" /> Supprimer
                       </button>
                     </div>
                   </motion.div>
                 )}
 
-                {/* FOOTER PANNEAU */}
                 <div className="flex justify-between items-center mt-8 pt-6 border-t border-white/5">
-                  <div className="flex items-center gap-4 text-white/20">
-                     <div className="flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4" />
-                        <span className="text-[10px] font-medium uppercase tracking-tighter">
-                          {transactions.length} Opérations
-                        </span>
-                     </div>
+                  <div className="flex items-center gap-2 text-white/20">
+                    <BarChart3 className="w-4 h-4" />
+                    <span className="text-[10px] font-medium uppercase tracking-tighter">{transactions.length} Opérations</span>
                   </div>
-
                   <div className="flex gap-3">
-                    <button
-                      onClick={handleReset}
-                      className="px-6 py-2.5 text-[10px] font-black text-red-400 bg-red-500/5 rounded-xl border border-red-500/20 hover:bg-red-500/10 uppercase tracking-[0.2em] transition-all"
-                    >
-                      Reset
-                    </button>
-                    <button
-                      onClick={() => setIsExpanded(false)}
-                      className="px-6 py-2.5 text-[10px] font-black text-white/40 bg-white/5 rounded-xl border border-white/10 hover:text-white uppercase tracking-[0.2em] transition-all"
-                    >
-                      Fermer
-                    </button>
+                    <button onClick={handleReset} className="px-6 py-2.5 text-[10px] font-black text-red-400 bg-red-500/5 rounded-xl border border-red-500/20 hover:bg-red-500/10 uppercase tracking-[0.2em] transition-all">Reset</button>
+                    <button onClick={() => setIsExpanded(false)} className="px-6 py-2.5 text-[10px] font-black text-white/40 bg-white/5 rounded-xl border border-white/10 hover:text-white uppercase tracking-[0.2em] transition-all">Fermer</button>
                   </div>
                 </div>
               </div>

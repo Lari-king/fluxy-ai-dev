@@ -1,18 +1,21 @@
 /**
- * 🎯 DATA CONTEXT - VERSION AUTO-APPRENTISSAGE RÉPARÉE
- * Correction : Support complet des sous-catégories et persistance robuste.
+ * 🎯 DATA CONTEXT - VERSION INTÉGRALE RESTAURÉE
+ * Support complet des sous-catégories, persistance robuste et liaison People Engine.
  */
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Transaction as BaseTransaction } from '@/utils/csv-parser';
 import { Rule } from '@/features/intelligence/types';
-import { PersonRelation } from '@/features/people/types/base';
+import { PersonRelation, PeopleScores } from '@/features/people/types/base';
+import { enrichPeopleData } from '@/features/people/engine/enrichment'; // Logiciel Engine
 import { encryptData, decryptData } from '@/utils/security';
 import { toast } from 'sonner';
 import { DEFAULT_CATEGORIES } from '@/constants/default-categories';
 import { extractCategoriesFromTransactions } from '@/utils/categories'; 
 
 export type { PersonRelation };
+
+// --- INTERFACES ---
 
 export interface Category { 
   id: string; 
@@ -51,19 +54,20 @@ export interface Budget {
   month?: string; 
 }
 
-export interface Transaction extends Omit<BaseTransaction, 'splitNote'> { 
-  personId?: string; 
+export interface Transaction extends Omit<BaseTransaction, 'splitNote' | 'personId'> { 
+  personId?: string | null;
   isPending?: boolean; 
   metadata?: Record<string, any>; 
   tags?: string[]; 
   lastModified?: string; 
+  updatedAt?: string; 
   isHidden?: boolean; 
   parentTransactionId?: string; 
   childTransactionIds?: string[];
   splitNote?: string;
   description: string;
   category: string;
-  subCategory?: string; // ✅ Ajout explicite pour le typage
+  subCategory?: string;
   amount: number;
   date: string;
 }
@@ -74,7 +78,8 @@ interface DataContextType {
   transactions: Transaction[];
   budgets: Budget[];
   goals: Goal[];
-  people: PersonRelation[];
+  people: PersonRelation[]; // Version enrichie
+  scores: PeopleScores | null; // Scores calculés par l'engine
   accounts: Entity[];
   categories: Category[];
   rules: Rule[];
@@ -100,6 +105,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
   const activeToken = useMemo(() => accessToken || 'user_176', [accessToken]);
   
+  // États de base (Données brutes)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [rawPeople, setRawPeople] = useState<PersonRelation[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -109,7 +115,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Expose catégories pour le script d'investigation
+  // ✅ ENRICHISSEMENT VIA ENGINE (Liaison Transactions/People)
+  const { people, scores } = useMemo(() => {
+    if (!rawPeople.length) return { people: [], scores: null };
+    const result = enrichPeopleData(rawPeople, transactions);
+    return { 
+      people: result.enrichedPeople, 
+      scores: result.scores 
+    };
+  }, [rawPeople, transactions]);
+
+  // Expose catégories pour debug
   useEffect(() => {
     (window as any).categories = categories;
   }, [categories]);
@@ -150,21 +166,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // --- ACTIONS ---
+
   const handleImport = useCallback(async (newTxs: Transaction[]) => {
-    // ✅ NORMALISATION AMÉLIORÉE : On préserve la subCategory
     const normalizedTxs = newTxs.map(tx => ({
       ...tx,
       id: tx.id || crypto.randomUUID(),
       description: tx.description || (tx as any).label || "Sans description",
       category: tx.category || "Inconnue",
-      subCategory: tx.subCategory || "", // Préserver la sous-catégorie de l'import
+      subCategory: tx.subCategory || "",
       amount: typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount,
       date: tx.date || new Date().toISOString()
     }));
 
-    // ✅ EXTRACTION ET PERSISTANCE DES CATÉGORIES ET SOUS-CATÉGORIES
     setCategories(prevCats => {
-      // S'assure que extractCategoriesFromTransactions gère bien les parentId
       const updatedCats = extractCategoriesFromTransactions(normalizedTxs, prevCats);
       saveToStorage('categories', updatedCats);
       return updatedCats;
@@ -191,8 +206,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [saveToStorage]);
 
   const updateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
+    const timestamp = new Date().toISOString();
     setTransactions(prev => {
-      const next = prev.map(t => t.id === id ? { ...t, ...updates } : t);
+      const next = prev.map(t => t.id === id 
+        ? { ...t, ...updates, updatedAt: timestamp, lastModified: timestamp } 
+        : t
+      );
       saveToStorage('transactions', next);
       return next;
     });
@@ -206,8 +225,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   }, [saveToStorage]);
 
+  // --- VALUE EXPOSÉE ---
+
   const value = useMemo(() => ({
-    transactions, budgets, goals, people: rawPeople, accounts, categories, rules, loading,
+    transactions, 
+    budgets, 
+    goals, 
+    people, // ✅ Expose la version calculée (enrichie)
+    scores, // ✅ Expose les scores IA de l'engine
+    accounts, 
+    categories, 
+    rules, 
+    loading,
     refreshData: loadData,
     handleImport,
     addTransaction,
@@ -216,12 +245,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     updateTransactions: (txs: Transaction[]) => { setTransactions(txs); saveToStorage('transactions', txs); },
     updateBudgets: (b: Budget[]) => { setBudgets(b); saveToStorage('budgets', b); },
     updateGoals: (g: Goal[]) => { setGoals(g); saveToStorage('goals', g); },
-    updatePeople: (p: PersonRelation[]) => { setRawPeople(p); saveToStorage('people', p); },
+    updatePeople: (p: PersonRelation[]) => { 
+      setRawPeople(p); 
+      saveToStorage('people', p); 
+    },
     updateAccounts: (a: Entity[]) => { setAccounts(a); saveToStorage('accounts', a); },
     updateCategories: (c: Category[]) => { setCategories(c); saveToStorage('categories', c); },
     updateRules: (r: Rule[]) => { setRules(r); saveToStorage('rules', r); },
   }), [
-    transactions, budgets, goals, rawPeople, accounts, categories, rules, loading,
+    transactions, budgets, goals, people, scores, accounts, categories, rules, loading,
     loadData, handleImport, addTransaction, updateTransaction, deleteTransaction, saveToStorage
   ]);
 

@@ -30,7 +30,7 @@ interface RelationsDashboardProps {
   onEdit: (p: PersonRelation, t?: string) => void;
   onViewDetail: (p: PersonRelation) => void;
   onDelete: (id: string) => void;
-  // MODIFICATION ICI : on ajoute les périodes manquantes
+  // ✅ Périodes alignées avec le sélecteur de l'écran People
   period: 'all' | 'current-month' | 'last-3-months' | 'last-6-months' | 'current-year' | 'custom';
   customStartDate: string;
   customEndDate: string;
@@ -118,11 +118,47 @@ const { startDate, endDate, monthKey } = useMemo(() => {
 
 // ===== FILTRAGE DES TRANSACTIONS =====
 const filteredTransactions = useMemo(() => {
+  if (!transactions) return [];
+  // ✅ Si 'all', on bypass tout le filtrage pour afficher l'intégralité
+  if (period === 'all') return transactions;
+
+  const now = new Date();
+
   return transactions.filter(txn => {
-    const txnDate = txn.date;
-    return txnDate >= startDate && txnDate <= endDate;
+    const d = new Date(txn.date);
+    
+    switch (period) {
+      case 'current-month':
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        
+      case 'last-3-months': {
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(now.getMonth() - 3);
+        return d >= threeMonthsAgo;
+      }
+
+      case 'last-6-months': {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(now.getMonth() - 6);
+        return d >= sixMonthsAgo;
+      }
+        
+      case 'current-year':
+        return d.getFullYear() === now.getFullYear();
+        
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          const start = new Date(customStartDate);
+          const end = new Date(customEndDate);
+          return d >= start && d <= end;
+        }
+        return true;
+
+      default:
+        return true;
+    }
   });
-}, [transactions, startDate, endDate]);
+}, [transactions, period, customStartDate, customEndDate]);
 
 // ===== STATISTIQUES GLOBALES (CORRIGÉES) =====
 const stats = useMemo(() => {
@@ -331,28 +367,27 @@ console.log("[DEBUG RelationsDashboard] ─────────────�
   };
 
   // ===== AFFICHAGE DES RELATIONS (AVEC RECHERCHE) =====
-  const displayedPeople = useMemo(() => {
-    const peopleWithTransactionsInPeriod = new Set(
-      filteredTransactions.filter(t => t.personId).map(t => t.personId)
-    );
+// ✅ On utilise "displayedPeople" pour que le reste de ton fichier fonctionne à nouveau
+const displayedPeople = useMemo(() => {
+  if (!people) return [];
+  
+  return people.filter(p => {
+    // 1. Recherche par nom (toujours prioritaire)
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // 2. LOGIQUE D'AFFICHAGE SOUPLE :
+    // On affiche la personne si :
+    // - Elle a un impact financier calculé (totalImpact !== 0)
+    // - OU elle a des transactions liées (hasTransactions)
+    // - OU elle est toute nouvelle (pas encore de stats, donc transactionCount est 0 ou undefined)
+    
+    const hasTransactions = transactions.some(t => t.personId === p.id);
+    const isNew = !p.transactionCount || p.transactionCount === 0;
+    const hasImpact = Math.abs(p.totalImpact || 0) > 0;
 
-    const withTransactions = people.filter(p => peopleWithTransactionsInPeriod.has(p.id));
-    const withoutTransactions = people.filter(p => !peopleWithTransactionsInPeriod.has(p.id));
-
-    let result = [...withTransactions, ...withoutTransactions];
-
-    // Filtrage par recherche
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(p => 
-        p.name.toLowerCase().includes(query) ||
-        p.relationship?.toLowerCase().includes(query) ||
-        p.email?.toLowerCase().includes(query)
-      );
-    }
-
-    return result;
-  }, [people, filteredTransactions, searchQuery]);
+    return matchesSearch && (hasImpact || hasTransactions || isNew);
+  });
+}, [people, searchQuery, transactions]);
 
   // ===== CATÉGORIES FILTRÉES =====
   const filteredCategories = useMemo(() => {

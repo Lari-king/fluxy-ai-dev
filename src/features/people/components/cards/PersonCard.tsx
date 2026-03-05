@@ -23,15 +23,17 @@ interface PersonCardProps {
 }
 
 export function PersonCard({ person, circleLabel, onEdit, onDelete, onViewDetail }: PersonCardProps) {
-  // Calcul de l'âge si applicable (pour les personnes physiques)
+  // 1. Calcul de l'âge sécurisé
   const age = person.birthDate
     ? new Date().getFullYear() - new Date(person.birthDate).getFullYear()
     : null;
 
-  // Couleurs et états dynamiques
-  const impactColor = (person.totalImpact ?? 0) >= 0 ? '#10b981' : '#ef4444';
+  // 2. Couleurs et états dynamiques avec fallback
+  const impactValue = person.totalImpact ?? 0;
+  const impactColor = impactValue >= 0 ? '#10b981' : '#ef4444';
   const hasObjective = Boolean(person.targetObjective);
   const isMorale = person.personType === PersonType.MORALE;
+  const progression = person.progressionPercentage ?? 0;
 
   return (
     <motion.div
@@ -127,26 +129,24 @@ export function PersonCard({ person, circleLabel, onEdit, onDelete, onViewDetail
           <div 
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-xl border"
             style={{
-              backgroundColor: (person.totalImpact ?? 0) >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-              borderColor: (person.totalImpact ?? 0) >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+              backgroundColor: impactValue >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              borderColor: impactValue >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
             }}
           >
             <TrendingUp className="w-4 h-4" style={{ color: impactColor }} />
             <span className="text-base font-bold text-white tabular-nums">
-              {person.totalImpact && person.totalImpact >= 0 ? '+' : ''}
-              {Math.abs(person.totalImpact ?? 0).toLocaleString('fr-FR')}€
+              {impactValue >= 0 ? '+' : ''}
+              {Math.abs(impactValue).toLocaleString('fr-FR')}€
             </span>
           </div>
           
-          {person.transactionCount !== undefined && (
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-              {person.transactionCount} opérations
-            </span>
-          )}
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+            {person.transactionCount ?? 0} opérations
+          </span>
         </div>
 
         {/* Objectif & Barre de Progression */}
-        {hasObjective && person.targetObjective && person.progressionPercentage !== undefined && (
+        {hasObjective && person.targetObjective && (
           <div className="space-y-2 pt-2 border-t border-white/5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
@@ -156,14 +156,14 @@ export function PersonCard({ person, circleLabel, onEdit, onDelete, onViewDetail
                 </span>
               </div>
               <span className="text-xs font-black text-white tabular-nums">
-                {Math.round(person.progressionPercentage)}%
+                {Math.round(progression)}%
               </span>
             </div>
             
             <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${Math.min(person.progressionPercentage, 100)}%` }}
+                animate={{ width: `${Math.min(progression, 100)}%` }}
                 transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
                 className="h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]"
                 style={{

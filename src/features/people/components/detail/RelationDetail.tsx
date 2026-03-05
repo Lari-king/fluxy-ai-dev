@@ -156,155 +156,154 @@ export function RelationDetail({
     };
   }, [period, customStartDate, customEndDate]);
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(txn => txn.date >= startDate && txn.date <= endDate);
-  }, [transactions, startDate, endDate]);
+// 1. Filtrage des transactions : on lie la personne ET la période ici
+const filteredTransactions = useMemo(() => {
+  return transactions.filter(txn => 
+    txn.personId === person.id && 
+    txn.date >= startDate && 
+    txn.date <= endDate
+  );
+}, [transactions, person.id, startDate, endDate]);
 
-  const stats = useMemo(() => {
-    const expenses = filteredTransactions
-      .filter(t => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    
-    const income = filteredTransactions
-      .filter(t => t.amount > 0)
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const balance = income - expenses;
-    
-    // Catégories avec priorité aux sous-catégories
-    const categoryMap = new Map<string, number>();
-    filteredTransactions
-      .filter(t => t.amount < 0)
-      .forEach(t => {
-        const subCat = (t as any).subCategory;
-        const cat = subCat || t.category || 'Non catégorisé';
-        categoryMap.set(cat, (categoryMap.get(cat) || 0) + Math.abs(t.amount));
-      });
-    
-    const topCategories = Array.from(categoryMap.entries())
-      .map(([name, amount]) => ({ name, amount }))
-      .sort((a, b) => b.amount - a.amount);
+// 2. Calcul des statistiques détaillées
+const stats = useMemo(() => {
+  const expenses = filteredTransactions
+    .filter(t => t.amount < 0)
+    .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+  
+  const income = filteredTransactions
+    .filter(t => t.amount > 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  
+  const balance = income - expenses;
+  
+  // Catégories avec priorité aux sous-catégories (Dynamic Refresh)
+  const categoryMap = new Map<string, number>();
+  filteredTransactions
+    .filter(t => t.amount < 0)
+    .forEach(t => {
+      const subCat = (t as any).subCategory;
+      const cat = subCat || t.category || 'Non catégorisé';
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + Math.abs(t.amount));
+    });
+  
+  const topCategories = Array.from(categoryMap.entries())
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount);
 
-    const allPersonTransactions = transactions.filter(t => t.personId === person.id);
-    const firstTxnDate = allPersonTransactions.length > 0
-      ? new Date(Math.min(...allPersonTransactions.map(t => new Date(t.date).getTime())))
-      : new Date();
-    const daysSinceFirst = Math.floor((new Date().getTime() - firstTxnDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let timeSinceFirst = '';
-    if (daysSinceFirst < 7) {
-      timeSinceFirst = `${daysSinceFirst} jour${daysSinceFirst > 1 ? 's' : ''}`;
-    } else if (daysSinceFirst < 30) {
-      const weeks = Math.floor(daysSinceFirst / 7);
-      timeSinceFirst = `${weeks} semaine${weeks > 1 ? 's' : ''}`;
-    } else if (daysSinceFirst < 365) {
-      const months = Math.floor(daysSinceFirst / 30);
-      timeSinceFirst = `${months} mois`;
-    } else {
-      const years = Math.floor(daysSinceFirst / 365);
-      timeSinceFirst = `${years} an${years > 1 ? 's' : ''}`;
-    }
+  // Historique global pour l'ancienneté
+  const allPersonTransactions = transactions.filter(t => t.personId === person.id);
+  const firstTxnDate = allPersonTransactions.length > 0
+    ? new Date(Math.min(...allPersonTransactions.map(t => new Date(t.date).getTime())))
+    : new Date();
+  const daysSinceFirst = Math.floor((new Date().getTime() - firstTxnDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  let timeSinceFirst = '';
+  if (daysSinceFirst < 7) {
+    timeSinceFirst = `${daysSinceFirst} jour${daysSinceFirst > 1 ? 's' : ''}`;
+  } else if (daysSinceFirst < 30) {
+    const weeks = Math.floor(daysSinceFirst / 7);
+    timeSinceFirst = `${weeks} semaine${weeks > 1 ? 's' : ''}`;
+  } else if (daysSinceFirst < 365) {
+    const months = Math.floor(daysSinceFirst / 30);
+    timeSinceFirst = `${months} mois`;
+  } else {
+    const years = Math.floor(daysSinceFirst / 365);
+    timeSinceFirst = `${years} an${years > 1 ? 's' : ''}`;
+  }
 
-    // Classements CORRECTS
-    const allPeopleWithTransactions = allPeople.map(p => {
-      const pTransactions = transactions.filter(t => t.personId === p.id);
-      const pAmount = pTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-      return {
-        id: p.id,
-        transactionCount: pTransactions.length,
-        totalAmount: pAmount
-      };
-    }).filter(p => p.transactionCount > 0);
-
-    const sortedByCount = [...allPeopleWithTransactions].sort((a, b) => b.transactionCount - a.transactionCount);
-    const sortedByAmount = [...allPeopleWithTransactions].sort((a, b) => b.totalAmount - a.totalAmount);
-
-    const rankByCount = sortedByCount.findIndex(p => p.id === person.id) + 1;
-    const rankByAmount = sortedByAmount.findIndex(p => p.id === person.id) + 1;
-
-    // POIDS DES REVENUS CORRIGÉ : dépenses de cette relation / revenus globaux
-    const totalRevenues = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
-    const personExpenses = allPersonTransactions
-      .filter(t => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const weightOnRevenues = totalRevenues > 0 ? (personExpenses / totalRevenues) * 100 : 0;
-
-    const spendingByDay = new Map<number, number>();
-    filteredTransactions
-      .filter(t => t.amount < 0)
-      .forEach(t => {
-        const day = new Date(t.date).getDate();
-        spendingByDay.set(day, (spendingByDay.get(day) || 0) + Math.abs(t.amount));
-      });
-
+  // CLASSEMENTS DYNAMIQUES (Calculés sur la période active pour plus de pertinence)
+  const transactionsInPeriod = transactions.filter(t => t.date >= startDate && t.date <= endDate);
+  const allPeopleWithTransactions = (allPeople || []).map(p => {
+    const pTransactions = transactionsInPeriod.filter(t => t.personId === p.id);
+    const pAmount = pTransactions.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
     return {
-      totalSpent: expenses,
-      totalIncome: income,
-      balance,
-      transactionCount: filteredTransactions.length,
-      totalTransactionCount: allPersonTransactions.length,
-      topCategories,
-      categoryCount: categoryMap.size,
-      timeSinceFirst,
-      daysSinceFirst,
-      rankByCount,
-      rankByAmount,
-      weightOnRevenues,
-      spendingByDay
+      id: p.id,
+      transactionCount: pTransactions.length,
+      totalAmount: pAmount
     };
-  }, [filteredTransactions, transactions, person.id, allPeople]);
+  }).filter(p => p.transactionCount > 0);
 
-  const budget = useMemo(() => {
-    if (!personBudget) {
-      return {
-        allocated: 0,
-        spent: stats.totalSpent,
-        remaining: 0,
-        percentage: 0,
-        isDefined: false
-      };
-    }
+  const sortedByCount = [...allPeopleWithTransactions].sort((a, b) => b.transactionCount - a.transactionCount);
+  const sortedByAmount = [...allPeopleWithTransactions].sort((a, b) => b.totalAmount - a.totalAmount);
 
-    const allocated = personBudget.allocated || 0;
-    const spent = stats.totalSpent;
-    const remaining = allocated - spent;
-    const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+  const rankByCount = sortedByCount.findIndex(p => p.id === person.id) + 1 || '-';
+  const rankByAmount = sortedByAmount.findIndex(p => p.id === person.id) + 1 || '-';
 
-    return {
-      allocated,
-      spent,
-      remaining,
-      percentage,
-      isDefined: true
-    };
-  }, [personBudget, stats.totalSpent]);
+  // POIDS DES REVENUS (Dépenses de la relation sur période / Revenus globaux sur période)
+  const totalGlobalRevenues = transactionsInPeriod
+    .filter(t => t.amount > 0)
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  const weightOnRevenues = totalGlobalRevenues > 0 ? (expenses / totalGlobalRevenues) * 100 : 0;
 
-  // Stats activités avec budget
-  const activitiesStats = useMemo(() => {
-    const totalActivitiesAmount = personActivities
-      .filter(a => a.plannedAmount)
-      .reduce((sum, a) => sum + (a.plannedAmount || 0), 0);
-    
-    const budgetAllocated = budget.allocated;
-    const alreadySpent = stats.totalSpent;
-    const remainingAfterActivities = budgetAllocated - alreadySpent - totalActivitiesAmount;
-    const isOverBudget = remainingAfterActivities < 0;
-    const overBudgetAmount = isOverBudget ? Math.abs(remainingAfterActivities) : 0;
+  // CALENDRIER (Agrégué par jour à partir des transactions filtrées)
+  const spendingByDay = new Map<number, number>();
+  filteredTransactions
+    .filter(t => t.amount < 0)
+    .forEach(t => {
+      const day = new Date(t.date).getDate();
+      spendingByDay.set(day, (spendingByDay.get(day) || 0) + Math.abs(t.amount));
+    });
 
-    return {
-      totalActivitiesAmount,
-      remainingAfterActivities,
-      isOverBudget,
-      overBudgetAmount,
-      budgetDefined: budget.isDefined
-    };
-  }, [personActivities, budget, stats.totalSpent]);
+  return {
+    totalSpent: expenses,
+    totalIncome: income,
+    balance,
+    transactionCount: filteredTransactions.length,
+    totalTransactionCount: allPersonTransactions.length,
+    topCategories,
+    categoryCount: categoryMap.size,
+    timeSinceFirst,
+    daysSinceFirst,
+    rankByCount,
+    rankByAmount,
+    weightOnRevenues,
+    spendingByDay
+  };
+}, [filteredTransactions, transactions, person.id, allPeople, startDate, endDate]);
 
-  const sortedTransactions = useMemo(() => {
-    return [...filteredTransactions].sort((a, b) => 
-      new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-  }, [filteredTransactions]);
+// 3. Calcul du Budget
+const budget = useMemo(() => {
+  // On récupère le budget alloué (champ targetMonthlyAmount de la personne)
+  const allocated = (person as any).targetMonthlyAmount || 0;
+  const spent = stats.totalSpent;
+  const remaining = allocated - spent;
+  const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+
+  return {
+    allocated,
+    spent,
+    remaining,
+    percentage,
+    isDefined: allocated > 0
+  };
+}, [person, stats.totalSpent]);
+
+// 4. Stats activités croisées avec le budget
+const activitiesStats = useMemo(() => {
+  const totalActivitiesAmount = (personActivities || [])
+    .filter(a => a.plannedAmount && a.status !== 'past')
+    .reduce((sum, a) => sum + (a.plannedAmount || 0), 0);
+  
+  const remainingAfterActivities = budget.remaining - totalActivitiesAmount;
+  const isOverBudget = remainingAfterActivities < 0;
+  const overBudgetAmount = isOverBudget ? Math.abs(remainingAfterActivities) : 0;
+
+  return {
+    totalActivitiesAmount,
+    remainingAfterActivities,
+    isOverBudget,
+    overBudgetAmount,
+    budgetDefined: budget.isDefined
+  };
+}, [personActivities, budget]);
+
+// 5. Liste ordonnée pour l'affichage
+const sortedTransactions = useMemo(() => {
+  return [...filteredTransactions].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+}, [filteredTransactions]);
 
   const reportTransactions = useMemo(() => {
     const reportStart = emailReportConfig.startDate || startDate;
