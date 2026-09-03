@@ -1,0 +1,36 @@
+project_id = "circle-family"
+
+[api]
+enabled = true
+port = 54331
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54332
+shadow_port = 54330
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "https://circle-family.pages.dev"
+additional_redirect_urls = [
+  "https://circle-family.pages.dev",
+  "https://3800c192.circle-family.pages.dev",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:8098"
+]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+secure_password_change = true
+min_password_length = 8
+
+[realtime]
+enabled = true

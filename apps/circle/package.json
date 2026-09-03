@@ -1,0 +1,28 @@
+{
+  "name": "circle-family",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc -b --pretty false",
+    "test:e2e": "node tests/e2e.mjs",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name circle-family --branch codex/circle-production --commit-dirty=true"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.86.0",
+    "lucide-react": "^0.487.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.27",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.62.1",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  }
+}
