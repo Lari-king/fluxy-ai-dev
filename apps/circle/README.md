@@ -38,6 +38,6 @@ Le dossier `dist/` est publié dans le projet Cloudflare Pages `circle-family`. 
 
 ## Données
 
-La migration initiale se trouve dans `supabase/migrations/202609040001_circle_core.sql`. Elle crée les profils, foyers, membres et enregistrements métier, avec isolation RLS par foyer, rôles d'accès et publication temps réel.
+Les migrations se trouvent dans `supabase/migrations/`. Elles créent les profils, foyers, membres et enregistrements métier, avec isolation RLS par foyer, rôles d'accès, publication temps réel et anonymisation de l'auteur lors de la suppression d'un compte.
 
 La bêta connecte déjà l'authentification, le multi-foyer, les signalements de maintenance, les réservations scolaires et l'ajout de contrats. Les autres contenus riches de la maquette restent des données de démonstration jusqu'à leur raccordement progressif aux mêmes primitives métier.
