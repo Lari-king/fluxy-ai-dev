@@ -290,7 +290,7 @@ function HomeView({ onOverlay }: { onOverlay: (overlay: Overlay) => void }) {
   const modes: Array<[HomeMode, string, React.ReactNode]> = [["contracts", "Contrats", <FileText size={17} />], ["equipment", "Équipements", <PackageCheck size={17} />], ["maintenance", "Maintenance", <Wrench size={17} />], ["improvements", "Améliorations", <Sparkles size={17} />]];
   const action: [string, React.ReactNode, Overlay] = mode === "contracts" ? ["Ajouter un document", <Upload size={18} />, "contract-document"] : mode === "equipment" ? ["Ajouter un équipement", <Plus size={18} />, "add-equipment"] : mode === "maintenance" ? ["Planifier", <CalendarClock size={18} />, "plan-care"] : ["Nouveau projet", <Plus size={18} />, "improvement-flow"];
   return <main className="view">
-    <div className="section-toolbar home-toolbar"><div className="segmented">{modes.map(([id, label, icon]) => <button className={mode === id ? "active" : ""} onClick={() => setMode(id)} type="button" key={id}>{icon}<span>{label}</span>{id === "maintenance" && <i className="tab-alert">{maintenanceCount} à traiter</i>}</button>)}</div><button className="secondary-button" type="button" onClick={() => onOverlay(action[2])}>{action[1]}<span>{action[0]}</span></button></div>
+    <div className="section-toolbar home-toolbar"><div className="segmented">{modes.map(([id, label, icon]) => <button className={mode === id ? "active" : ""} aria-label={label} title={label} onClick={() => setMode(id)} type="button" key={id}>{icon}<span>{label}</span>{id === "maintenance" && <i className="tab-alert">{maintenanceCount} à traiter</i>}</button>)}</div><button className="secondary-button" type="button" aria-label={action[0]} title={action[0]} onClick={() => onOverlay(action[2])}>{action[1]}<span>{action[0]}</span></button></div>
     <HomeStage mode={mode} onAction={() => onOverlay(mode === "contracts" ? "add-contract" : mode === "equipment" ? "add-equipment" : mode === "maintenance" ? "report-issue" : "improvement-flow")} />
     {mode === "contracts" && <Contracts onDocument={() => onOverlay("contract-document")} onAdd={() => onOverlay("add-contract")} />}
     {mode === "equipment" && <EquipmentHub onDetail={() => onOverlay("equipment-detail")} onAdd={() => onOverlay("add-equipment")} />}
@@ -770,6 +770,10 @@ function Root() {
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
     return () => data.subscription.unsubscribe();
   }, []);
+  useEffect(() => {
+    const theme = !session && !authMode ? "#0d3b32" : "#fffefa";
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", theme);
+  }, [authMode, session]);
   if (session === undefined) return <main className="app-loading"><img src="/art/circle-logo-mark-v1.png" alt="" /><LoaderCircle className="spin" size={24} /><span>Circle se prépare…</span></main>;
   if (session) return <CircleDataProvider session={session}><AuthenticatedProduct /></CircleDataProvider>;
   if (authMode) return <AuthScreen initialMode={authMode} onBack={() => setAuthMode(null)} />;

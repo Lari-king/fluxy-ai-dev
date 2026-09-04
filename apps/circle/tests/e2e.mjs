@@ -30,6 +30,24 @@ const bindErrors = (page) => {
   page.on("response", (response) => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
 };
 const waitForImages = (page) => page.waitForFunction(() => Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0), null, { timeout: 90_000 });
+const auditMobileLayout = async (page, label) => {
+  await waitForImages(page);
+  const result = await page.evaluate(() => {
+    const rootWidth = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+    const brokenImages = Array.from(document.images).filter((image) => !image.complete || image.naturalWidth === 0).map((image) => image.src);
+    const dialog = document.querySelector('[role="dialog"]');
+    const dialogRect = dialog?.getBoundingClientRect();
+    return {
+      viewportWidth: window.innerWidth,
+      rootWidth,
+      brokenImages,
+      dialogOutsideViewport: Boolean(dialogRect && (dialogRect.left < -1 || dialogRect.right > window.innerWidth + 1)),
+    };
+  });
+  if (result.rootWidth > result.viewportWidth + 1) throw new Error(`${label}: débordement horizontal ${result.rootWidth}px pour ${result.viewportWidth}px.`);
+  if (result.brokenImages.length) throw new Error(`${label}: ${result.brokenImages.length} image(s) non chargée(s).`);
+  if (result.dialogOutsideViewport) throw new Error(`${label}: le panneau sort du viewport.`);
+};
 const closeCompletedFlow = (page) => page.locator(".panel-footer .text-button", { hasText: "Fermer" }).click();
 const createTextPdf = (lines) => {
   const content = ["BT", "/F1 14 Tf", "72 740 Td", ...lines.flatMap((line, index) => [`(${line.replace(/[()\\]/g, "\\$&")}) Tj`, index < lines.length - 1 ? "0 -24 Td" : ""]), "ET"].filter(Boolean).join("\n");
@@ -89,12 +107,16 @@ try {
   if (!landingImageSource?.includes("circle-landing-family-v2.png")) throw new Error("La landing ne charge pas la nouvelle illustration.");
   await page.screenshot({ path: `${output}/desktop-landing.png`, fullPage: true });
 
-  const mobileLanding = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR" });
+  const mobileLanding = await browser.newContext({ viewport: { width: 402, height: 874 }, screen: { width: 402, height: 874 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, locale: "fr-FR" });
   const mobileLandingPage = await mobileLanding.newPage();
   bindErrors(mobileLandingPage);
   await mobileLandingPage.goto(baseURL, { waitUntil: "domcontentloaded" });
-  await waitForImages(mobileLandingPage);
+  await auditMobileLayout(mobileLandingPage, "landing");
   await mobileLandingPage.screenshot({ path: `${output}/mobile-landing.png`, fullPage: true });
+  await mobileLandingPage.getByRole("button", { name: "Créer mon Circle" }).first().click();
+  await mobileLandingPage.getByRole("heading", { name: "Créer mon compte" }).waitFor();
+  await auditMobileLayout(mobileLandingPage, "création de compte");
+  await mobileLandingPage.screenshot({ path: `${output}/mobile-signup.png`, fullPage: false });
   await mobileLanding.close();
 
   if (publicSignup) {
@@ -237,16 +259,90 @@ try {
   uploadedPaths = [...new Set(persisted.map((record) => record.payload?.storagePath).filter(Boolean))];
   uploadedFileCount = uploadedPaths.length;
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await waitForImages(page);
-  await page.screenshot({ path: `${output}/mobile-household.png`, fullPage: false });
+  const mobile = await browser.newContext({ viewport: { width: 402, height: 874 }, screen: { width: 402, height: 874 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, locale: "fr-FR" });
+  const mobilePage = await mobile.newPage();
+  bindErrors(mobilePage);
+  await mobilePage.goto(baseURL, { waitUntil: "domcontentloaded" });
+  await mobilePage.getByRole("button", { name: "J'ai déjà un compte" }).click();
+  await mobilePage.getByLabel("Adresse e-mail").fill(email);
+  await mobilePage.locator("#auth-password").fill(password);
+  await mobilePage.getByRole("button", { name: "Entrer dans Circle" }).click();
+  await mobilePage.getByRole("heading", { name: "Où voulez-vous entrer ?" }).waitFor();
+  await auditMobileLayout(mobilePage, "sélection du foyer");
+  await mobilePage.screenshot({ path: `${output}/mobile-households.png`, fullPage: false });
+  await mobilePage.getByRole("button", { name: /Foyer test Circle/ }).click();
+  await mobilePage.getByRole("heading", { name: "Foyer test Circle" }).waitFor();
+  {
+  const page = mobilePage;
+  await page.getByRole("button", { name: "Personnes", exact: true }).click();
+  await page.getByRole("button", { name: "Aujourd'hui", exact: true }).click();
+  await page.getByRole("heading", { name: "La famille, bien entourée." }).waitFor();
+  await auditMobileLayout(page, "personnes aujourd'hui");
+  await page.screenshot({ path: `${output}/mobile-people-today.png`, fullPage: false });
+  await page.getByRole("button", { name: "Profils", exact: true }).click();
+  await auditMobileLayout(page, "profils");
+  await page.getByRole("button", { name: "Yemaya Fille" }).click();
+  await page.getByRole("button", { name: /^École/ }).click();
+  await page.getByRole("heading", { name: "Pépinières Saint-Julien" }).waitFor();
+  await auditMobileLayout(page, "profil école");
+  await page.screenshot({ path: `${output}/mobile-school.png`, fullPage: false });
+  await page.getByRole("button", { name: "Agenda", exact: true }).click();
+  await page.getByRole("heading", { name: "Agenda familial" }).waitFor();
+  await auditMobileLayout(page, "agenda");
+  await page.screenshot({ path: `${output}/mobile-calendar.png`, fullPage: false });
+  await page.getByRole("button", { name: "Entourage", exact: true }).click();
+  await page.getByRole("heading", { name: "L'aide arrive avant l'urgence." }).waitFor();
+  await auditMobileLayout(page, "entourage");
+  await page.screenshot({ path: `${output}/mobile-circle.png`, fullPage: false });
+
   await page.getByRole("button", { name: "Habitation", exact: true }).click();
   await page.getByRole("heading", { name: "La maison est prête." }).waitFor();
+  await auditMobileLayout(page, "habitation contrats");
+  await page.screenshot({ path: `${output}/mobile-home-contracts.png`, fullPage: false });
+  await page.getByRole("button", { name: "Ajouter un document", exact: true }).first().click();
+  await page.getByRole("heading", { name: "Ajouter un document" }).waitFor();
+  await auditMobileLayout(page, "import document contrat");
+  await page.screenshot({ path: `${output}/mobile-contract-document.png`, fullPage: false });
+  await page.getByRole("button", { name: "Annuler" }).click();
+  await page.getByRole("button", { name: "Équipements", exact: true }).click();
+  await page.getByRole("heading", { name: "Tout ce qui fait la maison." }).waitFor();
+  await auditMobileLayout(page, "habitation équipements");
+  await page.screenshot({ path: `${output}/mobile-home-equipment.png`, fullPage: false });
+  await page.getByRole("button", { name: "Maintenance", exact: true }).click();
+  await page.getByRole("heading", { name: "La maison reste sereine." }).waitFor();
+  await auditMobileLayout(page, "habitation maintenance");
+  await page.screenshot({ path: `${output}/mobile-home-maintenance.png`, fullPage: false });
+  await page.getByRole("button", { name: "Signaler un problème" }).first().click();
+  await page.getByRole("heading", { name: "Signaler un problème" }).waitFor();
+  await auditMobileLayout(page, "signalement maintenance");
+  await page.screenshot({ path: `${output}/mobile-maintenance-report.png`, fullPage: false });
+  await page.getByRole("button", { name: "Annuler" }).click();
+  await page.getByRole("button", { name: "Améliorations", exact: true }).click();
+  await page.getByRole("heading", { name: "Le confort avance." }).waitFor();
+  await auditMobileLayout(page, "habitation améliorations");
+  await page.screenshot({ path: `${output}/mobile-home-improvements.png`, fullPage: false });
+
   await page.getByRole("button", { name: "Abonnements", exact: true }).click();
   await page.getByRole("heading", { name: "Seulement l'utile." }).waitFor();
+  await auditMobileLayout(page, "abonnements");
+  await page.screenshot({ path: `${output}/mobile-subscriptions.png`, fullPage: false });
+  await page.getByRole("button", { name: "Ajouter un abonnement" }).first().click();
+  await page.getByRole("heading", { name: "Ajouter un abonnement" }).waitFor();
+  await auditMobileLayout(page, "ajout abonnement");
+  await page.screenshot({ path: `${output}/mobile-subscription-add.png`, fullPage: false });
+  await page.getByRole("button", { name: "Annuler" }).click();
+
   await page.getByRole("button", { name: "Finances", exact: true }).click();
   await page.getByRole("heading", { name: "Ce mois-ci tient debout." }).waitFor();
+  await auditMobileLayout(page, "finances");
   await page.screenshot({ path: `${output}/mobile-finance.png`, fullPage: true });
+  await page.getByRole("button", { name: "Retrouver" }).click();
+  await page.getByRole("heading", { name: "Retrouver un paiement" }).waitFor();
+  await auditMobileLayout(page, "recherche paiement");
+  await page.screenshot({ path: `${output}/mobile-payment-search.png`, fullPage: false });
+  await page.getByRole("button", { name: "Terminer" }).click();
+  }
+  await mobile.close();
   await context.close();
 } finally {
   await browser.close();
