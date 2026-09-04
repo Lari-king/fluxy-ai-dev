@@ -53,9 +53,12 @@ interface CircleDataValue {
   households: CircleHousehold[];
   activeHousehold: CircleHousehold | null;
   records: CircleRecord[];
+  overviewRecords: CircleRecord[];
   selectHousehold: (id: string) => void;
-  createHousehold: (input: { name: string; city: string; familyShape: string }) => Promise<void>;
+  createHousehold: (input: { name: string; city: string; familyShape: string }) => Promise<string>;
   addRecord: (input: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
+  updateRecord: (id: string, input: { title?: string; status?: string; startsAt?: string | null; dueAt?: string | null; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
+  deleteRecord: (id: string) => Promise<void>;
   uploadDocument: (file: File) => Promise<string>;
   signOut: () => Promise<void>;
 }
@@ -69,6 +72,7 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
   const [households, setHouseholds] = useState<CircleHousehold[]>([]);
   const [activeId, setActiveId] = useState(() => localStorage.getItem("circle:active-household"));
   const [records, setRecords] = useState<CircleRecord[]>([]);
+  const [overviewRecords, setOverviewRecords] = useState<CircleRecord[]>([]);
 
   const activeHousehold = households.find((item) => item.id === activeId) || households[0] || null;
 
@@ -81,6 +85,16 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     if (profile?.display_name) setProfileName(profile.display_name);
     const next = (memberships || []).flatMap((entry) => entry.household ? [entry.household as unknown as CircleHousehold] : []);
     setHouseholds(next);
+    if (next.length) {
+      const { data: overview } = await supabase.from("circle_records")
+        .select("*")
+        .in("household_id", next.map((item) => item.id))
+        .in("kind", ["person", "event"])
+        .order("created_at", { ascending: false });
+      setOverviewRecords((overview || []) as CircleRecord[]);
+    } else {
+      setOverviewRecords([]);
+    }
     setActiveId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id || null);
     setLoading(false);
   }, [session.user.id]);
@@ -116,7 +130,9 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
       });
       if (error) throw error;
       await load();
-      if (data) setActiveId(String(data));
+      const householdId = String(data);
+      setActiveId(householdId);
+      return householdId;
     } finally {
       setSyncing(false);
     }
@@ -139,11 +155,51 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
       if (error) throw error;
       const created = data as CircleRecord;
       setRecords((current) => [created, ...current.filter((record) => record.id !== created.id)]);
+      if (created.kind === "person" || created.kind === "event") setOverviewRecords((current) => [created, ...current.filter((record) => record.id !== created.id)]);
       return created;
     } finally {
       setSyncing(false);
     }
   }, [activeHousehold, session.user.id]);
+
+  const updateRecord = useCallback(async (id: string, input: { title?: string; status?: string; startsAt?: string | null; dueAt?: string | null; payload?: Record<string, unknown> }) => {
+    if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
+    setSyncing(true);
+    try {
+      const updates: Record<string, unknown> = {};
+      if (input.title !== undefined) updates.title = input.title;
+      if (input.status !== undefined) updates.status = input.status;
+      if (input.startsAt !== undefined) updates.starts_at = input.startsAt;
+      if (input.dueAt !== undefined) updates.due_at = input.dueAt;
+      if (input.payload !== undefined) updates.payload = input.payload;
+      const { data, error } = await supabase.from("circle_records")
+        .update(updates)
+        .eq("id", id)
+        .eq("household_id", activeHousehold.id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      const updated = data as CircleRecord;
+      setRecords((current) => current.map((record) => record.id === updated.id ? updated : record));
+      if (updated.kind === "person" || updated.kind === "event") setOverviewRecords((current) => current.map((record) => record.id === updated.id ? updated : record));
+      return updated;
+    } finally {
+      setSyncing(false);
+    }
+  }, [activeHousehold]);
+
+  const deleteRecord = useCallback(async (id: string) => {
+    if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
+    setSyncing(true);
+    try {
+      const { error } = await supabase.from("circle_records").delete().eq("id", id).eq("household_id", activeHousehold.id);
+      if (error) throw error;
+      setRecords((current) => current.filter((record) => record.id !== id));
+      setOverviewRecords((current) => current.filter((record) => record.id !== id));
+    } finally {
+      setSyncing(false);
+    }
+  }, [activeHousehold]);
 
   const uploadDocument = useCallback(async (file: File) => {
     if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
@@ -162,12 +218,15 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     households,
     activeHousehold,
     records,
+    overviewRecords,
     selectHousehold: setActiveId,
     createHousehold,
     addRecord,
+    updateRecord,
+    deleteRecord,
     uploadDocument,
     signOut: async () => { await supabase.auth.signOut(); },
-  }), [session, loading, syncing, profileName, households, activeHousehold, records, createHousehold, addRecord, uploadDocument]);
+  }), [session, loading, syncing, profileName, households, activeHousehold, records, overviewRecords, createHousehold, addRecord, updateRecord, deleteRecord, uploadDocument]);
 
   return <CircleDataContext.Provider value={value}>{children}</CircleDataContext.Provider>;
 }

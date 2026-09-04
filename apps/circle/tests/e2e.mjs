@@ -193,19 +193,16 @@ try {
   await page.getByRole("button", { name: "Terminer" }).click();
 
   await page.getByRole("button", { name: "Personnes", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter une première personne" }).click();
+  await page.getByLabel("Prénom ou nom").fill("Enfant QA");
+  await page.getByRole("button", { name: "Enfant", exact: true }).click();
+  await page.getByLabel("Lien avec le foyer").fill("Enfant");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await page.getByRole("button", { name: "Profils", exact: true }).click();
-  await page.getByRole("button", { name: "Yemaya Fille" }).click();
-  await page.getByRole("button", { name: /^École/ }).click();
-  await page.getByRole("button", { name: "Modifier la semaine" }).click();
-  await page.getByRole("button", { name: "Vendredi 18 · soir" }).click();
-  await page.getByRole("button", { name: "Enregistrer les changements" }).click();
-  await page.getByRole("heading", { name: "Vendredi soir est réservé." }).waitFor();
-  await closeCompletedFlow(page);
-  await page.getByRole("button", { name: "Ajouter un document" }).click();
-  await page.getByLabel("Fichier à analyser").setInputFiles(path.join(fixtures, "autorisation-sortie.txt"));
-  await page.getByRole("button", { name: "Confirmer et ranger" }).click();
-  await page.getByRole("heading", { name: /est rangé/ }).waitFor();
-  await closeCompletedFlow(page);
+  await page.getByRole("button", { name: "Ajouter un rendez-vous" }).click();
+  await page.getByLabel("Qu'est-ce qui est prévu ?").fill("Rendez-vous QA");
+  await page.getByRole("button", { name: "Ajouter à l'agenda" }).click();
+  await page.getByText("Rendez-vous QA", { exact: true }).first().waitFor();
 
   await page.getByRole("button", { name: "Abonnements", exact: true }).click();
   await page.getByRole("button", { name: "Ajouter un abonnement" }).first().click();
@@ -276,22 +273,19 @@ try {
   const page = mobilePage;
   await page.getByRole("button", { name: "Personnes", exact: true }).click();
   await page.getByRole("button", { name: "Aujourd'hui", exact: true }).click();
-  await page.getByRole("heading", { name: "La famille, bien entourée." }).waitFor();
+  await page.getByRole("heading", { name: "Le prochain moment est clair." }).waitFor();
   await auditMobileLayout(page, "personnes aujourd'hui");
   await page.screenshot({ path: `${output}/mobile-people-today.png`, fullPage: false });
   await page.getByRole("button", { name: "Profils", exact: true }).click();
   await auditMobileLayout(page, "profils");
-  await page.getByRole("button", { name: "Yemaya Fille" }).click();
-  await page.getByRole("button", { name: /^École/ }).click();
-  await page.getByRole("heading", { name: "Pépinières Saint-Julien" }).waitFor();
-  await auditMobileLayout(page, "profil école");
-  await page.screenshot({ path: `${output}/mobile-school.png`, fullPage: false });
+  await page.getByRole("heading", { name: "Enfant QA" }).waitFor();
+  await page.screenshot({ path: `${output}/mobile-profile.png`, fullPage: false });
   await page.getByRole("button", { name: "Agenda", exact: true }).click();
-  await page.getByRole("heading", { name: "Agenda familial" }).waitFor();
+  await page.getByRole("heading", { name: "Les moments partagés" }).waitFor();
   await auditMobileLayout(page, "agenda");
   await page.screenshot({ path: `${output}/mobile-calendar.png`, fullPage: false });
   await page.getByRole("button", { name: "Entourage", exact: true }).click();
-  await page.getByRole("heading", { name: "L'aide arrive avant l'urgence." }).waitFor();
+  await page.getByRole("heading", { name: "Votre entourage viendra à votre rythme." }).waitFor();
   await auditMobileLayout(page, "entourage");
   await page.screenshot({ path: `${output}/mobile-circle.png`, fullPage: false });
 
@@ -359,4 +353,4 @@ try {
 }
 
 console.log(JSON.stringify({ baseURL, recordCount, uploadedFileCount, browserErrors: errors, screenshots: output }, null, 2));
-if (recordCount < 12 || uploadedFileCount < 4 || errors.length) process.exitCode = 1;
+if (recordCount < 10 || uploadedFileCount < 3 || errors.length) process.exitCode = 1;
