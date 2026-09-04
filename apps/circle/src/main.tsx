@@ -7,7 +7,7 @@ import {
   Droplets, Flame, Gauge, HandHeart, HeartPulse, Home, House, Info, KeyRound, Leaf, Lightbulb, ListChecks, LockKeyhole, Mail,
   MapPin, MapPinned, Menu, MessageCircle, MoreHorizontal, MoonStar, Navigation, NotebookTabs, PackageCheck, PawPrint, Pencil, Phone, Plus,
   Paperclip, ReceiptText, Repeat2, School, Search, Settings, ShieldCheck, Sparkles, Stethoscope,
-  LoaderCircle, LogOut, Send, SunMedium, Trees, Upload, UserCheck, UserRound, UsersRound, UtensilsCrossed, WalletCards, WandSparkles,
+  LoaderCircle, LogOut, Send, SunMedium, Trees, Trash2, Upload, UserCheck, UserRound, UsersRound, UtensilsCrossed, WalletCards, WandSparkles,
   Wifi, Wrench, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,7 +24,7 @@ type Screen = "landing" | "households" | "household";
 type HomeMode = "contracts" | "equipment" | "maintenance" | "improvements";
 type PeopleMode = "today" | "profiles" | "calendar" | "circle";
 type Person = "mother" | "daughter" | "dog";
-type ProfileMode = "overview" | "school" | "health";
+type ProfileMode = "overview" | "school" | "health" | "organization";
 type CircleMode = "needs" | "people" | "availability" | "services";
 type Overlay = "notifications" | "create" | "help" | "onboarding" | "handoff" | "document" | "contract-document" | "add-contract" | "report-issue" | "plan-care" | "equipment-detail" | "add-equipment" | "improvement-flow" | "allocation-flow" | "subscription-detail" | "add-subscription" | "expense-document" | "payment-search" | "school-booking" | "menu" | "holiday" | "need" | "helper-space" | "availability" | "visit-request" | "propose-time" | "circle-map" | null;
 
@@ -41,7 +41,7 @@ const initialTab: Tab = qaTab === "home" || qaTab === "subscriptions" || qaTab =
 const initialHomeMode: HomeMode = qaHomeMode === "equipment" || qaHomeMode === "maintenance" || qaHomeMode === "improvements" ? qaHomeMode : "contracts";
 const initialPeopleMode: PeopleMode = qaPeopleMode === "profiles" || qaPeopleMode === "calendar" || qaPeopleMode === "circle" ? qaPeopleMode : "today";
 const initialPerson: Person = qaPerson === "mother" || qaPerson === "dog" ? qaPerson : "daughter";
-const initialProfileMode: ProfileMode = qaProfileMode === "school" || qaProfileMode === "health" ? qaProfileMode : "overview";
+const initialProfileMode: ProfileMode = qaProfileMode === "school" || qaProfileMode === "health" || qaProfileMode === "organization" ? qaProfileMode : "overview";
 const initialOverlay: Overlay = qaOverlay === "school-booking" ? "school-booking" : null;
 
 const navItems: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
@@ -60,11 +60,42 @@ type CirclePersonScope = "household" | "trusted";
 const personType = (record: CircleRecord): CirclePersonType => record.payload.personType === "child" || record.payload.personType === "pet" ? record.payload.personType : "adult";
 const personScope = (record: CircleRecord): CirclePersonScope => record.payload.scope === "trusted" ? "trusted" : "household";
 const personRelation = (record: CircleRecord) => String(record.payload.relation || (personType(record) === "pet" ? "Animal du foyer" : "Membre du foyer"));
+const personGenderLabel = (record: CircleRecord) => ({ female: personType(record) === "pet" ? "Femelle" : "Féminin", male: personType(record) === "pet" ? "Mâle" : "Masculin", neutral: "Neutre", unspecified: "Non précisé" }[String(record.payload.gender || "unspecified")] || "Non précisé");
 const personInitials = (record: CircleRecord) => record.title.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 const personAvatarPreset = (record: CircleRecord): Person => personType(record) === "child" ? "daughter" : personType(record) === "pet" ? "dog" : "mother";
-const RecordAvatar = ({ record, size = "small" }: { record: CircleRecord; size?: "tiny" | "small" | "large" }) => personScope(record) === "trusted"
-  ? <span className={`record-initial record-initial--${size}`} aria-hidden="true">{personInitials(record)}</span>
-  : <Avatar person={personAvatarPreset(record)} size={size} />;
+const sortHouseholdPeople = (people: CircleRecord[]) => [...people].sort((left, right) => {
+  const rank = (record: CircleRecord) => {
+    if (record.payload.accountLinked) return 0;
+    if (personType(record) === "adult" && /parent|papa|maman|père|mère/i.test(personRelation(record))) return 1;
+    if (personType(record) === "adult") return 2;
+    return personType(record) === "child" ? 3 : 4;
+  };
+  return rank(left) - rank(right) || String(left.created_at).localeCompare(String(right.created_at));
+});
+
+function StoredAvatar({ path, label, size }: { path: string; label: string; size: "tiny" | "small" | "large" }) {
+  const [source, setSource] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void supabase.storage.from("circle-documents").createSignedUrl(path, 3600).then(({ data }) => {
+      if (alive) setSource(data?.signedUrl || "");
+    });
+    return () => { alive = false; };
+  }, [path]);
+  return source
+    ? <img className={`record-photo record-photo--${size}`} src={source} alt={`Portrait de ${label}`} />
+    : <span className={`record-initial record-initial--${size}`} aria-hidden="true">{label.slice(0, 1).toUpperCase()}</span>;
+}
+
+const RecordAvatar = ({ record, size = "small" }: { record: CircleRecord; size?: "tiny" | "small" | "large" }) => {
+  const imagePath = String(record.payload.avatarPath || "");
+  if (imagePath) return <StoredAvatar path={imagePath} label={record.title} size={size} />;
+  if (typeof record.payload.avatarPreset === "number") return <span className={`avatar-preset avatar-preset--${record.payload.avatarPreset} avatar-preset--${size}`} aria-hidden="true" />;
+  if (personType(record) === "pet") return <Avatar person="dog" size={size} />;
+  return personScope(record) === "trusted"
+    ? <span className={`record-initial record-initial--${size}`} aria-hidden="true">{personInitials(record)}</span>
+    : <Avatar person={personAvatarPreset(record)} size={size} />;
+};
 const eventDate = (record: CircleRecord) => record.starts_at ? new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(record.starts_at)) : "Date à préciser";
 
 const IconButton = ({ label, children, onClick, badge }: { label: string; children: React.ReactNode; onClick?: () => void; badge?: string }) =>
@@ -78,7 +109,7 @@ function AppHeader({ active, onTab, onOverlay, onHouseholds, onHome }: { active:
   const { activeHousehold, profileName, syncing, records } = useCircleData();
   const initials = profileName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const people = records.filter((record) => record.kind === "person");
-  const members = people.filter((record) => personScope(record) === "household");
+  const members = sortHouseholdPeople(people.filter((record) => personScope(record) === "household"));
   const trusted = people.filter((record) => personScope(record) === "trusted");
   const upcoming = records.filter((record) => record.kind === "event" && record.starts_at && new Date(record.starts_at).getTime() >= Date.now()).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))[0];
   const attentionCount = records.filter((record) => record.status === "pending" || record.status === "action_required").length;
@@ -130,22 +161,23 @@ function PeopleView({ onOverlay }: { onOverlay: (overlay: Overlay) => void }) {
   const [mode, setMode] = useState<PeopleMode>(initialPeopleMode);
   const { records } = useCircleData();
   const people = records.filter((record) => record.kind === "person");
-  const householdPeople = people.filter((record) => personScope(record) === "household");
+  const householdPeople = sortHouseholdPeople(people.filter((record) => personScope(record) === "household"));
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [flow, setFlow] = useState<{ kind: "menu" | "person" | "event" | "routine"; scope?: CirclePersonScope; record?: CircleRecord; personId?: string } | null>(null);
+  const [flow, setFlow] = useState<{ kind: "menu" | "person" | "event" | "routine" | "profile-details"; scope?: CirclePersonScope; record?: CircleRecord; personId?: string; section?: ProfileMode } | null>(null);
   useEffect(() => {
     if (!selectedPersonId || !householdPeople.some((record) => record.id === selectedPersonId)) setSelectedPersonId(householdPeople[0]?.id || null);
   }, [householdPeople.map((record) => record.id).join("|"), selectedPersonId]);
   return <main className="view">
     <SectionToolbar mode={mode} onMode={setMode} onCreate={() => setFlow({ kind: "menu" })} />
     {mode === "today" && <PeopleToday records={records} people={householdPeople} onAddPerson={() => setFlow({ kind: "person", scope: "household" })} onAddEvent={() => setFlow({ kind: "event" })} onCalendar={() => setMode("calendar")} />}
-    {mode === "profiles" && <PeopleProfiles records={records} people={householdPeople} selectedId={selectedPersonId} onSelect={setSelectedPersonId} onAdd={() => setFlow({ kind: "person", scope: "household" })} onEdit={(record) => setFlow({ kind: "person", scope: "household", record })} onEvent={(personId) => setFlow({ kind: "event", personId })} onRoutine={(personId) => setFlow({ kind: "routine", personId })} />}
+    {mode === "profiles" && <PeopleProfiles records={records} people={householdPeople} selectedId={selectedPersonId} onSelect={setSelectedPersonId} onAdd={() => setFlow({ kind: "person", scope: "household" })} onEdit={(record) => setFlow({ kind: "person", scope: "household", record })} onConfigure={(record, section) => setFlow({ kind: "profile-details", record, section })} onEvent={(personId) => setFlow({ kind: "event", personId })} onRoutine={(personId) => setFlow({ kind: "routine", personId })} />}
     {mode === "calendar" && <PeopleCalendar records={records} people={householdPeople} onAdd={() => setFlow({ kind: "event" })} />}
     {mode === "circle" && <PeopleTrustedCircle people={people.filter((record) => personScope(record) === "trusted")} onAdd={() => setFlow({ kind: "person", scope: "trusted" })} onEdit={(record) => setFlow({ kind: "person", scope: "trusted", record })} />}
     {flow?.kind === "menu" && <PeopleCreateMenu onClose={() => setFlow(null)} onPerson={() => setFlow({ kind: "person", scope: "household" })} onEvent={() => setFlow({ kind: "event" })} onRoutine={() => setFlow({ kind: "routine" })} onTrusted={() => setFlow({ kind: "person", scope: "trusted" })} />}
     {flow?.kind === "person" && <PersonFlow scope={flow.scope || "household"} record={flow.record} onClose={() => setFlow(null)} />}
     {flow?.kind === "event" && <EventFlow people={householdPeople} initialPersonId={flow.personId} onClose={() => setFlow(null)} />}
     {flow?.kind === "routine" && <RoutineFlow people={householdPeople} initialPersonId={flow.personId} onClose={() => setFlow(null)} />}
+    {flow?.kind === "profile-details" && flow.record && <ProfileDetailsFlow record={flow.record} section={flow.section || "overview"} onClose={() => setFlow(null)} />}
   </main>;
 }
 
@@ -168,15 +200,47 @@ function PeopleToday({ records, people, onAddPerson, onAddEvent, onCalendar }: {
   </>;
 }
 
-function PeopleProfiles({ records, people, selectedId, onSelect, onAdd, onEdit, onEvent, onRoutine }: { records: CircleRecord[]; people: CircleRecord[]; selectedId: string | null; onSelect: (id: string) => void; onAdd: () => void; onEdit: (record: CircleRecord) => void; onEvent: (id: string) => void; onRoutine: (id: string) => void }) {
+const profileSection = (record: CircleRecord, section: "school" | "health" | "organization") => {
+  const value = record.payload[section];
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+};
+
+function ProfileFact({ label, value }: { label: string; value: unknown }) {
+  return <div className="profile-fact"><small>{label}</small><b>{value ? String(value) : "À renseigner"}</b></div>;
+}
+
+function ProfileDomain({ record, section, onConfigure, onEvent }: { record: CircleRecord; section: Exclude<ProfileMode, "overview">; onConfigure: () => void; onEvent: () => void }) {
+  const data = profileSection(record, section);
+  const configured = Object.values(data).some((value) => String(value || "").trim());
+  const child = personType(record) === "child";
+  const pet = personType(record) === "pet";
+  const content = section === "school"
+    ? { eyebrow: "École", title: configured ? String(data.schoolName || "Sa scolarité") : "Préparer sa vie d'école.", note: "Établissement, horaires et accueils utiles, sans recopier tout le portail scolaire.", art: "/art/luce-household-access-v1.png" }
+    : section === "health"
+      ? { eyebrow: pet ? "Santé animale" : "Santé", title: configured ? String(data.practitioner || "Ses repères de santé") : "Les informations utiles, au bon moment.", note: "Traitements, allergies et contacts restent attachés à ce profil.", art: "/art/luce-child-health-v1.png" }
+      : { eyebrow: "Organisation", title: configured ? String(data.custodyMode || data.primaryHome || "Son organisation") : "Rendre les relais plus simples.", note: "Lieux de vie, garde et personnes autorisées restent clairs pour les adultes concernés.", art: "/art/luce-shared-custody-v1.png" };
+  return <section className={`profile-domain profile-domain--${section}`}>
+    <div className="profile-domain__hero"><div><span className="eyebrow">{content.eyebrow}</span><h2>{content.title}</h2><p>{content.note}</p><button className="primary-button primary-button--forest" type="button" onClick={onConfigure}><Pencil size={17} /> {configured ? "Modifier les informations" : "Renseigner"}</button></div><img src={content.art} alt="" /></div>
+    {section === "school" && <div className="profile-facts"><ProfileFact label="Établissement" value={data.schoolName} /><ProfileFact label="Classe" value={data.level} /><ProfileFact label="Horaires" value={data.startTime && data.endTime ? `${data.startTime} – ${data.endTime}` : ""} /><ProfileFact label="Périscolaire" value={[data.morningCare, data.eveningCare, data.wednesdayCare].filter(Boolean).join(" · ")} /><ProfileFact label="Référent" value={data.teacher} /><ProfileFact label="Personnes autorisées" value={data.authorizedPeople} /></div>}
+    {section === "health" && <><div className="profile-facts"><ProfileFact label={pet ? "Vétérinaire" : "Médecin ou pédiatre"} value={data.practitioner} /><ProfileFact label="Allergies" value={data.allergies || "Aucune indiquée"} /><ProfileFact label="Traitement" value={data.medications || "Aucun indiqué"} /><ProfileFact label="En cas de besoin" value={data.emergencyContact} /></div><div className="profile-domain__action"><span><HeartPulse size={19} /><span><b>Un rendez-vous à prévoir ?</b><small>Il apparaîtra aussi dans l'agenda familial.</small></span></span><button className="secondary-button" type="button" onClick={onEvent}><CalendarDays size={17} /> Ajouter un rendez-vous</button></div></>}
+    {section === "organization" && <div className="profile-facts"><ProfileFact label={child ? "Mode de garde" : "Organisation"} value={data.custodyMode} /><ProfileFact label="Lieu principal" value={data.primaryHome} /><ProfileFact label="Prochain relais" value={data.handoff} /><ProfileFact label="Personnes autorisées" value={data.authorizedPeople} /><ProfileFact label="Consigne à partager" value={data.instructions} /><ProfileFact label="Note" value={data.notes} /></div>}
+  </section>;
+}
+
+function PeopleProfiles({ records, people, selectedId, onSelect, onAdd, onEdit, onConfigure, onEvent, onRoutine }: { records: CircleRecord[]; people: CircleRecord[]; selectedId: string | null; onSelect: (id: string) => void; onAdd: () => void; onEdit: (record: CircleRecord) => void; onConfigure: (record: CircleRecord, section: ProfileMode) => void; onEvent: (id: string) => void; onRoutine: (id: string) => void }) {
+  const [profileMode, setProfileMode] = useState<ProfileMode>(initialProfileMode);
   if (!people.length) return <PeopleEmpty title="Aucun profil pour le moment." text="Chaque profil appartient uniquement à ce foyer et commence sans information préremplie." action="Ajouter une personne" onAction={onAdd} art="/art/luce-family-avatar-presets-v1.png" />;
   const selected = people.find((record) => record.id === selectedId) || people[0];
   const linkedEvents = records.filter((record) => record.kind === "event" && Array.isArray(record.payload.personIds) && record.payload.personIds.includes(selected.id)).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
   const linkedRoutines = records.filter((record) => record.kind === "routine" && record.payload.personId === selected.id);
+  const identityFacts = personType(selected) === "adult" ? [["Sexe ou genre", personGenderLabel(selected)], ["Nationalité", selected.payload.nationality], ["Téléphone", selected.payload.phone], ["Adresse e-mail", selected.payload.email], ["Employeur", selected.payload.employer], ["Lieu de travail", selected.payload.workplace]] : personType(selected) === "child" ? [["Sexe ou genre", personGenderLabel(selected)], ["Nationalité", selected.payload.nationality], ["Date de naissance", selected.payload.birthDate], ["Lieu de vie", selected.payload.city]] : [["Sexe", personGenderLabel(selected)], ["Date de naissance", selected.payload.birthDate], ["Lieu de vie", selected.payload.city]];
+  const availableModes: Array<[ProfileMode, string, React.ReactNode]> = [["overview", "Repères", <ListChecks size={16} />], ...(personType(selected) === "child" ? [["school", "École", <School size={16} />] as [ProfileMode, string, React.ReactNode]] : []), ["health", "Santé", <HeartPulse size={16} />], ["organization", "Organisation", <UsersRound size={16} />]];
+  const activeMode = availableModes.some(([mode]) => mode === profileMode) ? profileMode : "overview";
   return <>
-    <div className="profile-switcher dynamic-profile-switcher">{people.map((record) => <button className={record.id === selected.id ? "active" : ""} type="button" onClick={() => onSelect(record.id)} key={record.id}><RecordAvatar record={record} /><span><b>{record.title}</b><small>{personRelation(record)}</small></span></button>)}<button className="profile-add" type="button" onClick={onAdd} aria-label="Ajouter une personne"><Plus size={19} /></button></div>
-    <section className="real-profile-banner"><div className="real-profile-portrait"><RecordAvatar record={selected} size="large" /><div><small>{personRelation(selected)}</small><h2>{selected.title}</h2></div><IconButton label={`Modifier ${selected.title}`} onClick={() => onEdit(selected)}><Pencil size={17} /></IconButton></div><div className="real-profile-focus"><span className="eyebrow"><SunMedium size={15} /> Son quotidien</span><h2>{linkedEvents[0] ? linkedEvents[0].title : "Aucun rendez-vous prévu."}</h2><p>{linkedEvents[0] ? eventDate(linkedEvents[0]) : "Ajoutez un repère uniquement lorsqu'il devient utile."}</p><div><button className="primary-button primary-button--forest" type="button" onClick={() => onEvent(selected.id)}><CalendarDays size={17} /> Ajouter un rendez-vous</button><button className="secondary-button" type="button" onClick={() => onRoutine(selected.id)}><Repeat2 size={17} /> Ajouter une routine</button></div></div><aside><span><MapPin size={18} /><small>Lieu</small><b>{String(selected.payload.city || "À préciser")}</b></span><span><CalendarDays size={18} /><small>Naissance</small><b>{selected.payload.birthDate ? new Intl.DateTimeFormat("fr-FR").format(new Date(String(selected.payload.birthDate))) : "À préciser"}</b></span><span><NotebookTabs size={18} /><small>Note utile</small><b>{String(selected.payload.notes || "Aucune")}</b></span></aside></section>
-    <section className="real-profile-details"><article><span className="eyebrow">Agenda</span><h3>Ses prochains moments</h3>{linkedEvents.length ? linkedEvents.slice(0, 4).map((record) => <div className="people-static-row" key={record.id}><span><b>{record.title}</b><small>{eventDate(record)}</small></span></div>) : <p>Rien de prévu.</p>}</article><article><span className="eyebrow">Rythme</span><h3>Ses routines</h3>{linkedRoutines.length ? linkedRoutines.map((record) => <div className="people-static-row" key={record.id}><span><b>{record.title}</b><small>{String(record.payload.recurrence || "Récurrent")}</small></span></div>) : <p>Aucune routine enregistrée.</p>}</article></section>
+    <div className="profile-switcher dynamic-profile-switcher">{people.map((record) => <button className={record.id === selected.id ? "active" : ""} type="button" onClick={() => { onSelect(record.id); setProfileMode("overview"); }} key={record.id}><RecordAvatar record={record} /><span><b>{record.title}</b><small>{personRelation(record)}</small></span></button>)}<button className="profile-add" type="button" onClick={onAdd} aria-label="Ajouter une personne"><Plus size={19} /></button></div>
+    <section className="real-profile-banner"><div className="real-profile-portrait"><RecordAvatar record={selected} size="large" /><div><small>{personRelation(selected)}</small><h2>{selected.title}</h2>{Boolean(selected.payload.accountLinked) && <span className="account-linked"><ShieldCheck size={13} /> Profil lié à votre compte</span>}</div><IconButton label={`Modifier ${selected.title}`} onClick={() => onEdit(selected)}><Pencil size={17} /></IconButton></div><div className="real-profile-focus"><span className="eyebrow"><SunMedium size={15} /> Son quotidien</span><h2>{linkedEvents[0] ? linkedEvents[0].title : "Aucun rendez-vous prévu."}</h2><p>{linkedEvents[0] ? eventDate(linkedEvents[0]) : "Ajoutez un repère uniquement lorsqu'il devient utile."}</p><div><button className="primary-button primary-button--forest" type="button" onClick={() => onEvent(selected.id)}><CalendarDays size={17} /> Rendez-vous de {selected.title}</button><button className="secondary-button" type="button" onClick={() => onRoutine(selected.id)}><Repeat2 size={17} /> Routine de {selected.title}</button><button className="secondary-button" type="button" onClick={() => onEdit(selected)}><Pencil size={17} /> Modifier le profil</button></div></div><aside><span><MapPin size={18} /><small>Lieu</small><b>{String(selected.payload.city || "À préciser")}</b></span><span><CalendarDays size={18} /><small>Naissance</small><b>{selected.payload.birthDate ? new Intl.DateTimeFormat("fr-FR").format(new Date(String(selected.payload.birthDate))) : "À préciser"}</b></span><span><NotebookTabs size={18} /><small>Note utile</small><b>{String(selected.payload.notes || "Aucune")}</b></span></aside></section>
+    <nav className="profile-section-tabs" aria-label={`Informations de ${selected.title}`}>{availableModes.map(([mode, label, icon]) => <button className={activeMode === mode ? "active" : ""} type="button" key={mode} onClick={() => setProfileMode(mode)}>{icon}<span>{label}</span></button>)}</nav>
+    {activeMode === "overview" ? <><section className="profile-identity-facts">{identityFacts.map(([label, value]) => <ProfileFact label={String(label)} value={value} key={String(label)} />)}</section><section className="real-profile-details"><article><span className="eyebrow">Agenda</span><h3>Ses prochains moments</h3>{linkedEvents.length ? linkedEvents.slice(0, 4).map((record) => <div className="people-static-row" key={record.id}><span><b>{record.title}</b><small>{eventDate(record)}</small></span></div>) : <p>Rien de prévu.</p>}</article><article><span className="eyebrow">Rythme</span><h3>Ses routines</h3>{linkedRoutines.length ? linkedRoutines.map((record) => <div className="people-static-row" key={record.id}><span><b>{record.title}</b><small>{String(record.payload.recurrence || "Récurrent")}</small></span></div>) : <p>Aucune routine enregistrée.</p>}</article></section></> : <ProfileDomain record={selected} section={activeMode} onConfigure={() => onConfigure(selected, activeMode)} onEvent={() => onEvent(selected.id)} />}
   </>;
 }
 
@@ -198,17 +262,92 @@ function PeopleCreateMenu({ onClose, onPerson, onEvent, onRoutine, onTrusted }: 
 }
 
 function PersonFlow({ scope, record, onClose }: { scope: CirclePersonScope; record?: CircleRecord; onClose: () => void }) {
-  const { addRecord, updateRecord, deleteRecord, syncing } = useCircleData();
+  const { session, addRecord, updateRecord, deleteRecord, uploadProfileImage, deleteStoredFile, syncing } = useCircleData();
   const [name, setName] = useState(record?.title || "");
   const [relation, setRelation] = useState(String(record?.payload.relation || ""));
   const [kind, setKind] = useState<CirclePersonType>(record ? personType(record) : scope === "trusted" ? "adult" : "adult");
   const [city, setCity] = useState(String(record?.payload.city || ""));
   const [birthDate, setBirthDate] = useState(String(record?.payload.birthDate || ""));
+  const [gender, setGender] = useState(String(record?.payload.gender || "unspecified"));
+  const [nationality, setNationality] = useState(String(record?.payload.nationality || ""));
+  const [phone, setPhone] = useState(String(record?.payload.phone || ""));
+  const [email, setEmail] = useState(String(record?.payload.email || (record?.payload.accountLinked ? session.user.email || "" : "")));
+  const [employer, setEmployer] = useState(String(record?.payload.employer || ""));
+  const [workplace, setWorkplace] = useState(String(record?.payload.workplace || ""));
   const [notes, setNotes] = useState(String(record?.payload.notes || ""));
+  const [avatarPreset, setAvatarPreset] = useState<number | null>(typeof record?.payload.avatarPreset === "number" ? record.payload.avatarPreset : record ? null : scope === "trusted" ? 8 : 0);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState("");
-  const submit = async (event: React.FormEvent) => { event.preventDefault(); setError(""); const payload = { ...(record?.payload || {}), scope, personType: kind, relation, city, birthDate, notes }; try { if (record) await updateRecord(record.id, { title: name.trim(), payload }); else await addRecord({ kind: "person", title: name.trim(), payload }); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible d'enregistrer cette personne."); } };
-  const remove = async () => { if (!record || !window.confirm(`Retirer ${record.title} de ce Circle ?`)) return; try { await deleteRecord(record.id); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible de retirer cette personne."); } };
-  return <OverlayFrame title={record ? `Modifier ${record.title}` : scope === "trusted" ? "Ajouter un proche" : "Ajouter une personne"} eyebrow={scope === "trusted" ? "Entourage" : "Foyer"} onClose={onClose}><form className="real-form" onSubmit={submit}><label><span>Prénom ou nom</span><input aria-label="Prénom ou nom" value={name} onChange={(event) => setName(event.target.value)} required autoFocus /></label>{scope === "household" && <fieldset><legend>Profil</legend>{([['adult','Adulte'],['child','Enfant'],['pet','Animal']] as const).map(([value, label]) => <button className={kind === value ? "active" : ""} type="button" onClick={() => setKind(value)} key={value}>{label}</button>)}</fieldset>}<label><span>Lien avec le foyer</span><input aria-label="Lien avec le foyer" value={relation} onChange={(event) => setRelation(event.target.value)} placeholder={scope === "trusted" ? "Grand-mère, ami, voisine…" : "Parent, fille, chien…"} required /></label><div className="field-pair"><label><span>Ville ou lieu</span><input aria-label="Ville ou lieu" value={city} onChange={(event) => setCity(event.target.value)} /></label><label><span>Date de naissance</span><input aria-label="Date de naissance" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} /></label></div><label><span>Note utile</span><textarea aria-label="Note utile" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Facultatif" /></label><div className="privacy-card"><ShieldCheck size={18} /><span><b>Données propres à ce foyer</b><small>Créer un profil n'accorde aucun accès au compte. Les invitations seront toujours explicites.</small></span></div>{error && <div className="auth-error">{error}</div>}<footer className="real-form__footer">{record ? <button className="danger-text" type="button" onClick={() => void remove()}>Retirer</button> : <button className="text-button" type="button" onClick={onClose}>Annuler</button>}<button className="primary-button primary-button--forest" type="submit" disabled={syncing || !name.trim() || !relation.trim()}>{syncing && <LoaderCircle className="spin" size={17} />} Enregistrer</button></footer></form></OverlayFrame>;
+  useEffect(() => {
+    if (!photoFile) { setPhotoPreview(""); return; }
+    const source = URL.createObjectURL(photoFile);
+    setPhotoPreview(source);
+    return () => URL.revokeObjectURL(source);
+  }, [photoFile]);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    let uploadedPath = "";
+    try {
+      if (photoFile) uploadedPath = await uploadProfileImage(photoFile);
+      const currentPath = String(record?.payload.avatarPath || "");
+      const payload = {
+        ...(record?.payload || {}), scope, personType: kind, relation, city, birthDate, gender, nationality, phone, email, employer, workplace, notes,
+        avatarPath: uploadedPath || (avatarPreset === null ? currentPath : ""),
+        avatarPreset,
+      };
+      if (record) await updateRecord(record.id, { title: name.trim(), payload });
+      else await addRecord({ kind: "person", title: name.trim(), payload });
+      if (currentPath && (uploadedPath || avatarPreset !== null)) await deleteStoredFile(currentPath).catch(() => undefined);
+      onClose();
+    } catch (cause) {
+      if (uploadedPath) await deleteStoredFile(uploadedPath).catch(() => undefined);
+      setError(cause instanceof Error ? cause.message : "Impossible d'enregistrer cette personne.");
+    }
+  };
+  const remove = async () => {
+    if (!record || record.payload.accountLinked) return;
+    try {
+      await deleteRecord(record.id);
+      const currentPath = String(record.payload.avatarPath || "");
+      if (currentPath) await deleteStoredFile(currentPath).catch(() => undefined);
+      onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible de supprimer cette personne."); }
+  };
+  return <OverlayFrame title={record ? `Modifier ${record.title}` : scope === "trusted" ? "Ajouter un proche" : "Ajouter une personne"} eyebrow={scope === "trusted" ? "Entourage" : "Foyer"} onClose={onClose}><form className="real-form" onSubmit={submit}>
+    <section className="avatar-editor"><div className="avatar-editor__preview">{photoPreview ? <img src={photoPreview} alt="Aperçu du portrait" /> : record && !photoFile && avatarPreset === null ? <RecordAvatar record={record} size="large" /> : <span className={`avatar-preset avatar-preset--${avatarPreset ?? 0} avatar-preset--large`} />}</div><div><b>Son image</b><p>Choisissez une photo de votre téléphone ou un avatar Circle.</p><label className="secondary-button avatar-upload"><Upload size={17} /> Choisir une photo<input aria-label="Choisir une photo" type="file" accept="image/jpeg,image/png,image/heic,image/heif" onChange={(event) => { const file = event.target.files?.[0] || null; setPhotoFile(file); if (file) setAvatarPreset(null); }} /></label></div></section>
+    <fieldset className="avatar-choices"><legend>Ou choisir un avatar</legend>{Array.from({ length: 12 }, (_, index) => <button className={avatarPreset === index && !photoFile ? "active" : ""} type="button" aria-label={`Avatar Circle ${index + 1}`} onClick={() => { setAvatarPreset(index); setPhotoFile(null); }} key={index}><span className={`avatar-preset avatar-preset--${index} avatar-preset--small`} /></button>)}</fieldset>
+    <label><span>Prénom ou nom</span><input aria-label="Prénom ou nom" value={name} onChange={(event) => setName(event.target.value)} required autoFocus /></label>{scope === "household" && <fieldset><legend>Profil</legend>{([['adult','Adulte'],['child','Enfant'],['pet','Animal']] as const).map(([value, label]) => <button className={kind === value ? "active" : ""} type="button" onClick={() => { setKind(value); if (!photoFile && value === "pet") setAvatarPreset(null); else if (!photoFile && kind === "pet" && avatarPreset === null) setAvatarPreset(value === "child" ? 2 : 0); }} key={value}>{label}</button>)}</fieldset>}<label><span>Lien avec le foyer</span><input aria-label="Lien avec le foyer" value={relation} onChange={(event) => setRelation(event.target.value)} placeholder={scope === "trusted" ? "Grand-mère, ami, voisine…" : "Parent, fille, chien…"} required /></label>
+    <fieldset><legend>Sexe ou genre</legend>{[["female", kind === "pet" ? "Femelle" : "Féminin"], ["male", kind === "pet" ? "Mâle" : "Masculin"], ["neutral", "Neutre"], ["unspecified", "Ne pas préciser"]].map(([value, label]) => <button className={gender === value ? "active" : ""} type="button" onClick={() => setGender(value)} key={value}>{label}</button>)}</fieldset>
+    <div className="field-pair"><label><span>Ville ou lieu</span><input aria-label="Ville ou lieu" value={city} onChange={(event) => setCity(event.target.value)} /></label><label><span>Date de naissance</span><input aria-label="Date de naissance" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} /></label></div>
+    {kind !== "pet" && <label><span>Nationalité</span><input aria-label="Nationalité" value={nationality} onChange={(event) => setNationality(event.target.value)} placeholder="Facultatif" /></label>}
+    {kind === "adult" && <><div className="field-pair"><label><span>Téléphone</span><input aria-label="Téléphone" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></label><label><span>Adresse e-mail</span><input aria-label="Adresse e-mail du profil" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><div className="field-pair"><label><span>Employeur</span><input aria-label="Employeur" value={employer} onChange={(event) => setEmployer(event.target.value)} placeholder="Facultatif" /></label><label><span>Lieu de travail</span><input aria-label="Lieu de travail" value={workplace} onChange={(event) => setWorkplace(event.target.value)} placeholder="Adresse ou ville" /></label></div></>}
+    <label><span>Note utile</span><textarea aria-label="Note utile" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Facultatif" /></label><div className="privacy-card"><ShieldCheck size={18} /><span><b>Données propres à ce foyer</b><small>Créer un profil n'accorde aucun accès au compte. Les invitations seront toujours explicites.</small></span></div>
+    {record?.payload.accountLinked ? <div className="account-profile-note"><ShieldCheck size={18} /><span><b>Votre profil de co-parent</b><small>Il est lié à votre accès au foyer. Vous pouvez le modifier, mais pas le supprimer ici.</small></span></div> : record && <section className="profile-delete"><Trash2 size={19} /><span><b>Supprimer ce profil</b><small>Ses informations personnelles disparaîtront de ce foyer.</small></span>{confirmDelete ? <button className="danger-button" type="button" onClick={() => void remove()}>Confirmer la suppression</button> : <button className="danger-text" type="button" onClick={() => setConfirmDelete(true)}>Supprimer</button>}</section>}
+    {error && <div className="auth-error">{error}</div>}<footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing || !name.trim() || !relation.trim()}>{syncing && <LoaderCircle className="spin" size={17} />} Enregistrer</button></footer></form></OverlayFrame>;
+}
+
+function ProfileDetailsFlow({ record, section, onClose }: { record: CircleRecord; section: ProfileMode; onClose: () => void }) {
+  const { updateRecord, syncing } = useCircleData();
+  const key = section === "overview" ? "organization" : section;
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(profileSection(record, key)).map(([name, value]) => [name, String(value || "")])));
+  const [error, setError] = useState("");
+  const field = (name: string, label: string, placeholder = "", type = "text") => <label><span>{label}</span><input aria-label={label} type={type} value={values[name] || ""} placeholder={placeholder} onChange={(event) => setValues((current) => ({ ...current, [name]: event.target.value }))} /></label>;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+    try { await updateRecord(record.id, { payload: { ...record.payload, [key]: values } }); onClose(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible d'enregistrer ces informations."); }
+  };
+  const title = key === "school" ? `École de ${record.title}` : key === "health" ? `Santé de ${record.title}` : `Organisation de ${record.title}`;
+  return <OverlayFrame title={title} eyebrow="Profil" onClose={onClose}><form className="real-form profile-details-form" onSubmit={submit}>
+    {key === "school" && <><div className="kindness-note"><School size={18} /><span><b>Seulement les repères qui servent</b><small>Le portail de l'école reste la source officielle. Circle rassemble ce qui facilite votre quotidien.</small></span></div>{field("schoolName", "Établissement", "Nom de l'école")}{field("level", "Classe ou niveau", "Petite section, CP…")}{field("teacher", "Enseignant ou référent", "Facultatif")}<div className="field-pair">{field("startTime", "Heure d'entrée", "", "time")}{field("endTime", "Heure de sortie", "", "time")}</div>{field("morningCare", "Accueil du matin", "Ex. 7h45, certains jours")}{field("eveningCare", "Accueil du soir", "Ex. jusqu'à 18h")}{field("wednesdayCare", "Mercredi", "Centre de loisirs, proche…")}{field("authorizedPeople", "Personnes autorisées", "Noms séparés par une virgule")}{field("address", "Adresse utile", "Facultatif")}<label><span>Consignes ou documents à penser</span><textarea aria-label="Consignes ou documents à penser" value={values.notes || ""} onChange={(event) => setValues((current) => ({ ...current, notes: event.target.value }))} /></label></>}
+    {key === "health" && <><div className="privacy-card"><LockKeyhole size={18} /><span><b>Informations sensibles</b><small>Elles restent dans ce foyer et ne sont jamais partagées automatiquement avec l'entourage.</small></span></div>{field("practitioner", personType(record) === "pet" ? "Vétérinaire" : "Médecin ou pédiatre", "Nom et coordonnées")}{field("allergies", "Allergies", "Aucune connue, ou précisez")}{field("medications", "Traitement ou médicaments", "Nom, dose et moment")}{field("emergencyContact", "Contact en cas de besoin", "Nom et téléphone")}<label><span>Consignes importantes</span><textarea aria-label="Consignes importantes" value={values.instructions || ""} onChange={(event) => setValues((current) => ({ ...current, instructions: event.target.value }))} placeholder="Ce qu'un adulte doit savoir pour bien s'en occuper" /></label><label><span>Note privée</span><textarea aria-label="Note privée" value={values.notes || ""} onChange={(event) => setValues((current) => ({ ...current, notes: event.target.value }))} /></label></>}
+    {key === "organization" && <><div className="kindness-note"><UsersRound size={18} /><span><b>Une information claire évite les relances</b><small>Ces repères pourront ensuite accompagner un relais ou une garde, après votre validation.</small></span></div>{field("custodyMode", personType(record) === "child" ? "Mode de garde" : "Organisation", "Alternée, principale, libre…")}{field("primaryHome", "Lieu principal", "Chez qui ou à quelle adresse")}{field("handoff", "Repère de relais", "Ex. vendredi après l'école")}{field("authorizedPeople", "Personnes autorisées", "Qui peut venir chercher ou accompagner")}{field("instructions", "Consigne à partager", "Ex. sac, médicaments, habitudes")}<label><span>Note d'organisation</span><textarea aria-label="Note d'organisation" value={values.notes || ""} onChange={(event) => setValues((current) => ({ ...current, notes: event.target.value }))} /></label></>}
+    {error && <div className="auth-error">{error}</div>}<footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing}>{syncing && <LoaderCircle className="spin" size={17} />} Enregistrer</button></footer>
+  </form></OverlayFrame>;
 }
 
 function EventFlow({ people, initialPersonId, onClose }: { people: CircleRecord[]; initialPersonId?: string; onClose: () => void }) {
@@ -221,17 +360,19 @@ function EventFlow({ people, initialPersonId, onClose }: { people: CircleRecord[
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const submit = async (event: React.FormEvent) => { event.preventDefault(); setError(""); try { await addRecord({ kind: "event", title: title.trim(), status: "planned", startsAt: new Date(startsAt).toISOString(), payload: { personIds, location, notes } }); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible d'ajouter cet événement."); } };
-  return <OverlayFrame title="Ajouter un rendez-vous" eyebrow="Agenda familial" onClose={onClose}><form className="real-form" onSubmit={submit}><label><span>Qu'est-ce qui est prévu ?</span><input aria-label="Qu'est-ce qui est prévu ?" value={title} onChange={(event) => setTitle(event.target.value)} required autoFocus /></label><label><span>Date et heure</span><input aria-label="Date et heure" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required /></label><label><span>Lieu</span><input aria-label="Lieu" value={location} onChange={(event) => setLocation(event.target.value)} /></label><fieldset className="person-checks"><legend>Qui est concerné ?</legend>{people.length ? people.map((person) => <label key={person.id}><input aria-label={person.title} type="checkbox" checked={personIds.includes(person.id)} onChange={() => setPersonIds((current) => current.includes(person.id) ? current.filter((id) => id !== person.id) : [...current, person.id])} /><RecordAvatar record={person} size="tiny" /> {person.title}</label>) : <p>Ajoutez d'abord une personne au foyer.</p>}</fieldset><label><span>Détail utile</span><textarea aria-label="Détail utile" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>{error && <div className="auth-error">{error}</div>}<footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing || !title.trim() || !startsAt || !personIds.length}>Ajouter à l'agenda</button></footer></form></OverlayFrame>;
+  const linkedPerson = people.find((person) => person.id === initialPersonId);
+  return <OverlayFrame title={linkedPerson ? `Rendez-vous de ${linkedPerson.title}` : "Ajouter un rendez-vous"} eyebrow={linkedPerson ? "Profil personnel" : "Agenda familial"} onClose={onClose}><form className="real-form" onSubmit={submit}>{linkedPerson && <div className="linked-action-note"><RecordAvatar record={linkedPerson} /><span><b>Ce rendez-vous concerne {linkedPerson.title}</b><small>Vous pouvez ajouter d'autres personnes concernées ci-dessous.</small></span></div>}<label><span>Qu'est-ce qui est prévu ?</span><input aria-label="Qu'est-ce qui est prévu ?" value={title} onChange={(event) => setTitle(event.target.value)} required autoFocus /></label><label><span>Date et heure</span><input aria-label="Date et heure" type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required /></label><label><span>Lieu</span><input aria-label="Lieu" value={location} onChange={(event) => setLocation(event.target.value)} /></label><fieldset className="person-checks"><legend>Qui est concerné ?</legend>{people.length ? people.map((person) => <label key={person.id}><input aria-label={person.title} type="checkbox" checked={personIds.includes(person.id)} onChange={() => setPersonIds((current) => current.includes(person.id) ? current.filter((id) => id !== person.id) : [...current, person.id])} /><RecordAvatar record={person} size="tiny" /> {person.title}</label>) : <p>Ajoutez d'abord une personne au foyer.</p>}</fieldset><label><span>Détail utile</span><textarea aria-label="Détail utile" value={notes} onChange={(event) => setNotes(event.target.value)} /></label>{error && <div className="auth-error">{error}</div>}<footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing || !title.trim() || !startsAt || !personIds.length}>Ajouter à l'agenda</button></footer></form></OverlayFrame>;
 }
 
 function RoutineFlow({ people, initialPersonId, onClose }: { people: CircleRecord[]; initialPersonId?: string; onClose: () => void }) {
   const { addRecord, syncing } = useCircleData();
   const [title, setTitle] = useState("");
-  const [personId, setPersonId] = useState(initialPersonId || people[0]?.id || "");
+  const [personId, setPersonId] = useState(initialPersonId || "all");
   const [time, setTime] = useState("18:30");
   const [recurrence, setRecurrence] = useState("Tous les jours");
   const submit = async (event: React.FormEvent) => { event.preventDefault(); await addRecord({ kind: "routine", title: title.trim(), payload: { personId, time, recurrence } }); onClose(); };
-  return <OverlayFrame title="Ajouter une routine" eyebrow="Repère du quotidien" onClose={onClose}><form className="real-form" onSubmit={submit}><label><span>Routine</span><input aria-label="Routine" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Médicament du soir" required autoFocus /></label><label><span>Personne concernée</span><select aria-label="Personne concernée" value={personId} onChange={(event) => setPersonId(event.target.value)} required><option value="">Choisir</option>{people.map((person) => <option key={person.id} value={person.id}>{person.title}</option>)}</select></label><div className="field-pair"><label><span>Heure</span><input aria-label="Heure" type="time" value={time} onChange={(event) => setTime(event.target.value)} /></label><label><span>Récurrence</span><select aria-label="Récurrence" value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>Tous les jours</option><option>Chaque semaine</option><option>Jours d'école</option><option>À chaque garde</option></select></label></div><footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing || !title.trim() || !personId}>Enregistrer la routine</button></footer></form></OverlayFrame>;
+  const linkedPerson = people.find((person) => person.id === initialPersonId);
+  return <OverlayFrame title={linkedPerson ? `Routine de ${linkedPerson.title}` : "Routine du foyer"} eyebrow={linkedPerson ? "Profil personnel" : "Repère partagé"} onClose={onClose}><form className="real-form" onSubmit={submit}>{linkedPerson && <div className="linked-action-note"><RecordAvatar record={linkedPerson} /><span><b>Cette routine concerne {linkedPerson.title}</b><small>Elle restera visible dans ce profil.</small></span></div>}<label><span>Routine</span><input aria-label="Routine" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Médicament du soir" required autoFocus /></label><label><span>Personne concernée</span><select aria-label="Personne concernée" value={personId} onChange={(event) => setPersonId(event.target.value)} required><option value="all">Tout le foyer</option>{people.map((person) => <option key={person.id} value={person.id}>{person.title}</option>)}</select></label><div className="field-pair"><label><span>Heure</span><input aria-label="Heure" type="time" value={time} onChange={(event) => setTime(event.target.value)} /></label><label><span>Récurrence</span><select aria-label="Récurrence" value={recurrence} onChange={(event) => setRecurrence(event.target.value)}><option>Tous les jours</option><option>Chaque semaine</option><option>Jours d'école</option><option>À chaque garde</option></select></label></div><footer className="real-form__footer"><button className="text-button" type="button" onClick={onClose}>Annuler</button><button className="primary-button primary-button--forest" type="submit" disabled={syncing || !title.trim() || !personId}>Enregistrer la routine</button></footer></form></OverlayFrame>;
 }
 
 function TodayPanel({ onHandoff, onSchool, onCalendar }: { onHandoff: () => void; onSchool: () => void; onCalendar: () => void }) {
@@ -838,7 +979,7 @@ function HouseholdsPage({ onOpen, onBack, onCreate }: { onOpen: (id: string) => 
   const { households, profileName, overviewRecords } = useCircleData();
   const [panel, setPanel] = useState<"notifications" | "account" | null>(null);
   const initials = profileName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  return <main className="households-page"><header><Brand onClick={onBack} /><div><IconButton label="Notifications" onClick={() => setPanel("notifications")}><Bell size={19} /></IconButton><button className="account-icon" type="button" aria-label="Mon compte" title="Mon compte" onClick={() => setPanel("account")}>{initials}</button></div></header><section className="households-intro"><span className="eyebrow">Bonjour {profileName}</span><h1>Où voulez-vous entrer ?</h1><p>Chaque foyer garde son rythme, ses membres et ses accès.</p></section><section className="household-cards">{households.map((household, index) => { const householdRecords = overviewRecords.filter((record) => record.household_id === household.id); const people = householdRecords.filter((record) => record.kind === "person" && personScope(record) === "household"); const next = householdRecords.filter((record) => record.kind === "event" && record.starts_at && new Date(record.starts_at).getTime() >= Date.now()).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))[0]; return <button className={index === 0 ? "household-card household-card--primary" : "household-card"} type="button" onClick={() => onOpen(household.id)} key={household.id}><img src={household.cover_art || "/art/circle-trusted-ring-v1.png"} alt="" /><div><span className="eyebrow"><i className="live-dot" /> {index === 0 ? "Vous gérez ce foyer" : "Vous êtes membre"}</span><h2>{household.name}</h2><p>{household.city || "Lieu à préciser"}</p><div className="household-mini-family">{people.length ? people.slice(0, 5).map((record) => <RecordAvatar key={record.id} record={record} size="tiny" />) : <small>Aucune personne ajoutée</small>}</div><aside><small>Prochaine chose</small><b>{next ? `${next.title} · ${eventDate(next)}` : "Rien de prévu"}</b></aside></div><ChevronRight size={22} /></button>; })}<button className="household-create" type="button" onClick={onCreate}><Plus size={22} /><span><b>Créer un autre foyer</b><small>Un espace neuf, sans donnée d'exemple</small></span></button></section><footer><ShieldCheck size={17} /><span>Deux foyers peuvent porter le même nom : leurs identifiants et leurs données restent séparés.</span></footer>{panel === "notifications" && <Notifications onClose={() => setPanel(null)} />}{panel === "account" && <AccountMenu onClose={() => setPanel(null)} />}</main>;
+  return <main className="households-page"><header><Brand onClick={onBack} /><div><IconButton label="Notifications" onClick={() => setPanel("notifications")}><Bell size={19} /></IconButton><button className="account-icon" type="button" aria-label="Mon compte" title="Mon compte" onClick={() => setPanel("account")}>{initials}</button></div></header><section className="households-intro"><span className="eyebrow">Bonjour {profileName}</span><h1>Où voulez-vous entrer ?</h1><p>Chaque foyer garde son rythme, ses membres et ses accès.</p></section><section className="household-cards">{households.map((household, index) => { const householdRecords = overviewRecords.filter((record) => record.household_id === household.id); const people = sortHouseholdPeople(householdRecords.filter((record) => record.kind === "person" && personScope(record) === "household")); const next = householdRecords.filter((record) => record.kind === "event" && record.starts_at && new Date(record.starts_at).getTime() >= Date.now()).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))[0]; return <button className={index === 0 ? "household-card household-card--primary" : "household-card"} type="button" onClick={() => onOpen(household.id)} key={household.id}><img src={household.cover_art || "/art/circle-trusted-ring-v1.png"} alt="" /><div><span className="eyebrow"><i className="live-dot" /> {index === 0 ? "Vous gérez ce foyer" : "Vous êtes membre"}</span><h2>{household.name}</h2><p>{household.city || "Lieu à préciser"}</p><div className="household-mini-family">{people.length ? people.slice(0, 5).map((record) => <RecordAvatar key={record.id} record={record} size="tiny" />) : <small>Aucune personne ajoutée</small>}</div><aside><small>Prochaine chose</small><b>{next ? `${next.title} · ${eventDate(next)}` : "Rien de prévu"}</b></aside></div><ChevronRight size={22} /></button>; })}<button className="household-create" type="button" onClick={onCreate}><Plus size={22} /><span><b>Créer un autre foyer</b><small>Un espace neuf, sans donnée d'exemple</small></span></button></section><footer><ShieldCheck size={17} /><span>Deux foyers peuvent porter le même nom : leurs identifiants et leurs données restent séparés.</span></footer>{panel === "notifications" && <Notifications onClose={() => setPanel(null)} />}{panel === "account" && <AccountMenu onClose={() => setPanel(null)} />}</main>;
 }
 
 function NewHouseholdFlow({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
@@ -863,7 +1004,7 @@ function CircleSetup() {
     try { await createHousehold({ name, city, familyShape }); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible de créer le foyer."); }
   };
-  return <main className="setup-page"><header><Brand /><span>Bonjour {profileName}</span></header><section className="setup-copy"><span className="eyebrow">Votre premier Circle</span><h1>Commençons par votre foyer.</h1><p>Un nom, une ville et votre organisation. Les personnes viendront ensuite.</p><form onSubmit={submit}><label><span>Nom du foyer</span><input value={name} onChange={(event) => setName(event.target.value)} required /></label><label><span>Ville</span><input value={city} onChange={(event) => setCity(event.target.value)} /></label><fieldset><legend>Votre organisation</legend><button className={familyShape === "shared_custody" ? "active" : ""} type="button" onClick={() => setFamilyShape("shared_custody")}>Deux parents, deux foyers</button><button className={familyShape === "single_home" ? "active" : ""} type="button" onClick={() => setFamilyShape("single_home")}>Un foyer principal</button><button className={familyShape === "other" ? "active" : ""} type="button" onClick={() => setFamilyShape("other")}>Autre organisation</button></fieldset>{error && <div className="auth-error">{error}</div>}<button className="landing-primary" type="submit" disabled={syncing}>{syncing && <LoaderCircle className="spin" size={18} />}Créer mon Circle<ChevronRight size={18} /></button></form></section><section className="setup-art"><img src="/art/circle-trusted-ring-v1.png" alt="Un foyer entouré de ses proches" /></section></main>;
+  return <main className="setup-page"><header><Brand /><span>Bonjour {profileName}</span></header><section className="setup-copy"><span className="eyebrow">Votre premier Circle</span><h1>Commençons par votre foyer.</h1><p>Un nom, une ville et votre organisation. Votre profil de co-parent sera déjà prêt.</p><form onSubmit={submit}><label><span>Nom du foyer</span><input value={name} onChange={(event) => setName(event.target.value)} required /></label><label><span>Ville</span><input value={city} onChange={(event) => setCity(event.target.value)} /></label><fieldset><legend>Votre organisation</legend><button className={familyShape === "shared_custody" ? "active" : ""} type="button" onClick={() => setFamilyShape("shared_custody")}>Deux parents, deux foyers</button><button className={familyShape === "single_home" ? "active" : ""} type="button" onClick={() => setFamilyShape("single_home")}>Un foyer principal</button><button className={familyShape === "other" ? "active" : ""} type="button" onClick={() => setFamilyShape("other")}>Autre organisation</button></fieldset>{error && <div className="auth-error">{error}</div>}<button className="landing-primary" type="submit" disabled={syncing}>{syncing && <LoaderCircle className="spin" size={18} />}Créer mon Circle<ChevronRight size={18} /></button></form></section><section className="setup-art"><img src="/art/circle-trusted-ring-v1.png" alt="Un foyer entouré de ses proches" /></section></main>;
 }
 
 function App() {

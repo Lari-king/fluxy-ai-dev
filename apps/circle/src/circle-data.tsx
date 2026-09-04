@@ -60,6 +60,8 @@ interface CircleDataValue {
   updateRecord: (id: string, input: { title?: string; status?: string; startsAt?: string | null; dueAt?: string | null; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
   deleteRecord: (id: string) => Promise<void>;
   uploadDocument: (file: File) => Promise<string>;
+  uploadProfileImage: (file: File) => Promise<string>;
+  deleteStoredFile: (path: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -78,8 +80,8 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
 
   const load = useCallback(async () => {
     const [{ data: profile }, { data: memberships, error }] = await Promise.all([
-      supabase.from("circle_profiles").select("display_name").eq("id", session.user.id).maybeSingle(),
-      supabase.from("circle_household_members").select("household:circle_households(*)").eq("user_id", session.user.id).eq("status", "active"),
+      supabase.from("circle_profiles").select("display_name,avatar_url").eq("id", session.user.id).maybeSingle(),
+      supabase.from("circle_household_members").select("role,household:circle_households(*)").eq("user_id", session.user.id).eq("status", "active"),
     ]);
     if (error) throw error;
     if (profile?.display_name) setProfileName(profile.display_name);
@@ -91,7 +93,41 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
         .in("household_id", next.map((item) => item.id))
         .in("kind", ["person", "event"])
         .order("created_at", { ascending: false });
-      setOverviewRecords((overview || []) as CircleRecord[]);
+      let nextOverview = (overview || []) as CircleRecord[];
+      const ownerHouseholds = (memberships || [])
+        .filter((entry) => entry.role === "owner" && entry.household)
+        .map((entry) => (entry.household as unknown as CircleHousehold).id);
+      const missingOwnerProfiles = ownerHouseholds.filter((householdId) => !nextOverview.some((record) =>
+        record.household_id === householdId && record.kind === "person" && record.payload.userId === session.user.id
+      ));
+      if (missingOwnerProfiles.length) {
+        const displayName = profile?.display_name || session.user.user_metadata.full_name || "Moi";
+        const { error: ownerError } = await supabase.from("circle_records").insert(missingOwnerProfiles.map((householdId) => ({
+          household_id: householdId,
+          kind: "person",
+          title: displayName,
+          status: "active",
+          payload: {
+            scope: "household",
+            personType: "adult",
+            relation: "Co-parent",
+            accountLinked: true,
+            userId: session.user.id,
+            email: session.user.email || "",
+            avatarPreset: 0,
+          },
+          created_by: session.user.id,
+        })));
+        if (ownerError) throw ownerError;
+        const { data: refreshed, error: refreshError } = await supabase.from("circle_records")
+          .select("*")
+          .in("household_id", next.map((item) => item.id))
+          .in("kind", ["person", "event"])
+          .order("created_at", { ascending: false });
+        if (refreshError) throw refreshError;
+        nextOverview = (refreshed || []) as CircleRecord[];
+      }
+      setOverviewRecords(nextOverview);
     } else {
       setOverviewRecords([]);
     }
@@ -129,14 +165,31 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
         household_family_shape: familyShape,
       });
       if (error) throw error;
-      await load();
       const householdId = String(data);
+      const { error: personError } = await supabase.from("circle_records").insert({
+        household_id: householdId,
+        kind: "person",
+        title: profileName,
+        status: "active",
+        payload: {
+          scope: "household",
+          personType: "adult",
+          relation: "Co-parent",
+          accountLinked: true,
+          userId: session.user.id,
+          email: session.user.email || "",
+          avatarPreset: 0,
+        },
+        created_by: session.user.id,
+      });
+      if (personError) throw personError;
+      await load();
       setActiveId(householdId);
       return householdId;
     } finally {
       setSyncing(false);
     }
-  }, [load]);
+  }, [load, profileName, session.user.id]);
 
   const addRecord = useCallback(async ({ kind, title, status = "active", startsAt, dueAt, payload = {} }: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => {
     if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
@@ -210,6 +263,22 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     return path;
   }, [activeHousehold, session.user.id]);
 
+  const uploadProfileImage = useCallback(async (file: File) => {
+    if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
+    if (!file.type.startsWith("image/")) throw new Error("Choisissez une image JPEG, PNG, HEIC ou HEIF.");
+    if (file.size > 8 * 1024 * 1024) throw new Error("Cette image dépasse 8 Mo.");
+    const extension = file.name.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "").toLowerCase() || "jpg";
+    const path = `${session.user.id}/${activeHousehold.id}/avatars/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from("circle-documents").upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw error;
+    return path;
+  }, [activeHousehold, session.user.id]);
+
+  const deleteStoredFile = useCallback(async (path: string) => {
+    const { error } = await supabase.storage.from("circle-documents").remove([path]);
+    if (error) throw error;
+  }, []);
+
   const value = useMemo<CircleDataValue>(() => ({
     session,
     loading,
@@ -225,8 +294,10 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     updateRecord,
     deleteRecord,
     uploadDocument,
+    uploadProfileImage,
+    deleteStoredFile,
     signOut: async () => { await supabase.auth.signOut(); },
-  }), [session, loading, syncing, profileName, households, activeHousehold, records, overviewRecords, createHousehold, addRecord, updateRecord, deleteRecord, uploadDocument]);
+  }), [session, loading, syncing, profileName, households, activeHousehold, records, overviewRecords, createHousehold, addRecord, updateRecord, deleteRecord, uploadDocument, uploadProfileImage, deleteStoredFile]);
 
   return <CircleDataContext.Provider value={value}>{children}</CircleDataContext.Provider>;
 }

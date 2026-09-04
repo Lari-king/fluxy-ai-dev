@@ -65,20 +65,11 @@ try {
   await page.getByRole("heading", { name: "Où voulez-vous entrer ?" }).waitFor();
   await page.locator(".household-card").filter({ hasText: "Rouen" }).click();
   await page.getByRole("heading", { name: householdName }).waitFor();
-  await page.getByRole("heading", { name: "Qui fait partie de ce foyer ?" }).waitFor();
   await assertNoDemoData(page);
-
-  const peopleArts = [];
-  for (const tab of ["Aujourd'hui", "Profils", "Agenda", "Entourage"]) {
-    await page.getByRole("button", { name: tab, exact: true }).click();
-    const image = page.locator(".people-empty > img");
-    await image.evaluate((element) => element.decode());
-    const source = await image.getAttribute("src");
-    if (!source) throw new Error(`Le bandeau ${tab} n'a pas d'illustration.`);
-    peopleArts.push(source);
-  }
-  if (new Set(peopleArts).size !== peopleArts.length) throw new Error(`Illustrations réutilisées dans Personnes : ${peopleArts.join(", ")}`);
-  if (peopleArts.includes("/art/circle-trusted-ring-v1.png")) throw new Error("L'illustration du foyer est réutilisée dans un onglet Personnes.");
+  await page.getByRole("button", { name: "Profils", exact: true }).click();
+  await page.getByText("QA Isolation", { exact: true }).first().waitFor();
+  await page.getByText("Co-parent", { exact: true }).first().waitFor();
+  await page.getByText("Profil lié à votre compte", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Agenda", exact: true }).click();
   if (await page.locator(".real-calendar > header").count()) throw new Error("L'ancien bandeau blanc de l'Agenda est encore rendu.");
   if (await page.getByRole("button", { name: "Ajouter", exact: true }).count()) throw new Error("Le bouton Ajouter redondant de l'Agenda est encore rendu.");
@@ -88,11 +79,7 @@ try {
   await page.getByRole("heading", { name: "Rien à signaler." }).waitFor();
   await page.getByRole("button", { name: "Fermer", exact: true }).last().click();
 
-  await page.getByRole("button", { name: "Ajouter une première personne" }).click();
-  await page.getByLabel("Prénom ou nom").fill("Camille QA");
-  await page.getByLabel("Lien avec le foyer").fill("Parent");
-  await page.getByLabel("Ville ou lieu").fill("Rouen");
-  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await addPerson(page, { name: "Camille QA", relation: "Parent", city: "Rouen" });
   await page.getByRole("button", { name: "Profils", exact: true }).click();
   await page.getByText("Camille QA", { exact: true }).first().waitFor();
   await addPerson(page, { name: "Lina QA", relation: "Fille", profile: "Enfant", city: "Rouen" });
@@ -104,8 +91,8 @@ try {
   await addPerson(page, { name: "Pixel QA", relation: "Chien", profile: "Animal" });
   await page.locator(".dynamic-profile-switcher > button").filter({ hasText: "Pixel QA" }).click();
   await page.getByRole("button", { name: "Modifier Pixel QA" }).click();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Retirer", exact: true }).click();
+  await page.getByRole("button", { name: "Supprimer", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmer la suppression", exact: true }).click();
   await page.waitForFunction(() => !document.body.innerText.includes("Pixel QA"));
 
   await page.getByLabel("Créer").click();
@@ -141,14 +128,11 @@ try {
   await page.getByLabel("Nom du nouveau foyer").fill(householdName);
   await page.getByLabel("Ville du nouveau foyer").fill("Paris");
   await page.getByRole("button", { name: "Créer ce foyer" }).click();
-  await page.getByRole("heading", { name: "Qui fait partie de ce foyer ?" }).waitFor();
+  await page.getByRole("button", { name: "Profils", exact: true }).click();
+  await page.getByText("QA Isolation", { exact: true }).first().waitFor();
   await assertNoDemoData(page);
   if (await page.getByText("Camille QA", { exact: true }).count()) throw new Error("Une personne du premier foyer apparaît dans le second.");
-  await page.getByRole("button", { name: "Ajouter une première personne" }).click();
-  await page.getByLabel("Prénom ou nom").fill("Noé QA");
-  await page.getByLabel("Lien avec le foyer").fill("Parent");
-  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
-  await page.getByRole("button", { name: "Profils", exact: true }).click();
+  await addPerson(page, { name: "Noé QA", relation: "Parent" });
   await page.getByText("Noé QA", { exact: true }).first().waitFor();
 
   await page.getByRole("button", { name: "Changer de foyer" }).click();
