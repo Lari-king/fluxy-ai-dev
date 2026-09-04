@@ -229,7 +229,7 @@ function ProfileDomain({ record, section, onConfigure, onEvent }: { record: Circ
 
 function PeopleProfiles({ records, people, selectedId, onSelect, onAdd, onEdit, onConfigure, onEvent, onRoutine }: { records: CircleRecord[]; people: CircleRecord[]; selectedId: string | null; onSelect: (id: string) => void; onAdd: () => void; onEdit: (record: CircleRecord) => void; onConfigure: (record: CircleRecord, section: ProfileMode) => void; onEvent: (id: string) => void; onRoutine: (id: string) => void }) {
   const [profileMode, setProfileMode] = useState<ProfileMode>(initialProfileMode);
-  if (!people.length) return <PeopleEmpty title="Aucun profil pour le moment." text="Chaque profil appartient uniquement à ce foyer et commence sans information préremplie." action="Ajouter une personne" onAction={onAdd} art="/art/luce-family-avatar-presets-v1.png" />;
+  if (!people.length) return <PeopleEmpty title="Aucun profil pour le moment." text="Chaque profil appartient uniquement à ce foyer et commence sans information préremplie." action="Ajouter une personne" onAction={onAdd} art="/art/luce-family-avatar-presets-web-v1.png" />;
   const selected = people.find((record) => record.id === selectedId) || people[0];
   const linkedEvents = records.filter((record) => record.kind === "event" && Array.isArray(record.payload.personIds) && record.payload.personIds.includes(selected.id)).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
   const linkedRoutines = records.filter((record) => record.kind === "routine" && record.payload.personId === selected.id);
