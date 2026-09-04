@@ -56,6 +56,7 @@ interface CircleDataValue {
   selectHousehold: (id: string) => void;
   createHousehold: (input: { name: string; city: string; familyShape: string }) => Promise<void>;
   addRecord: (input: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
+  uploadDocument: (file: File) => Promise<string>;
   signOut: () => Promise<void>;
 }
 
@@ -144,6 +145,15 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     }
   }, [activeHousehold, session.user.id]);
 
+  const uploadDocument = useCallback(async (file: File) => {
+    if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
+    const safeName = file.name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(-120) || "document";
+    const path = `${session.user.id}/${activeHousehold.id}/${crypto.randomUUID()}-${safeName}`;
+    const { error } = await supabase.storage.from("circle-documents").upload(path, file, { contentType: file.type || undefined, upsert: false });
+    if (error) throw error;
+    return path;
+  }, [activeHousehold, session.user.id]);
+
   const value = useMemo<CircleDataValue>(() => ({
     session,
     loading,
@@ -155,8 +165,9 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     selectHousehold: setActiveId,
     createHousehold,
     addRecord,
+    uploadDocument,
     signOut: async () => { await supabase.auth.signOut(); },
-  }), [session, loading, syncing, profileName, households, activeHousehold, records, createHousehold, addRecord]);
+  }), [session, loading, syncing, profileName, households, activeHousehold, records, createHousehold, addRecord, uploadDocument]);
 
   return <CircleDataContext.Provider value={value}>{children}</CircleDataContext.Provider>;
 }

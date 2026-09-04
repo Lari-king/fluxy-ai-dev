@@ -1,6 +1,8 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const baseURL = process.env.CIRCLE_BASE_URL || "http://127.0.0.1:8098";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -16,6 +18,7 @@ const email = `circle.qa.${stamp}@${publicSignup ? "gmail.com" : "example.com"}`
 const confirmEmail = `circle.confirm.${stamp}@gmail.com`;
 const password = `Circle-${stamp}-Test!`;
 const output = process.env.CIRCLE_TEST_OUTPUT || "/private/tmp/circle-e2e";
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 await fs.mkdir(output, { recursive: true });
 
 const errors = [];
@@ -24,11 +27,30 @@ const browser = await chromium.launch({ headless: true, executablePath: chrome }
 const bindErrors = (page) => {
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
 };
 const waitForImages = (page) => page.waitForFunction(() => Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0), null, { timeout: 90_000 });
 const closeCompletedFlow = (page) => page.locator(".panel-footer .text-button", { hasText: "Fermer" }).click();
+const createTextPdf = (lines) => {
+  const content = ["BT", "/F1 14 Tf", "72 740 Td", ...lines.flatMap((line, index) => [`(${line.replace(/[()\\]/g, "\\$&")}) Tj`, index < lines.length - 1 ? "0 -24 Td" : ""]), "ET"].filter(Boolean).join("\n");
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    `5 0 obj\n<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream\nendobj\n`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) { offsets.push(Buffer.byteLength(pdf)); pdf += object; }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf);
+};
 
 let recordCount = -1;
+let uploadedFileCount = -1;
+let uploadedPaths = [];
 try {
   if (process.env.CIRCLE_TEST_CONFIRMATION === "1") {
     const confirmationContext = await browser.newContext({ viewport: { width: 1100, height: 800 }, locale: "fr-FR" });
@@ -101,6 +123,24 @@ try {
   await page.screenshot({ path: `${output}/desktop-household.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Habitation", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un document" }).first().click();
+  await page.getByLabel("Fichier à analyser").setInputFiles({ name: "facture-electricite-septembre.pdf", mimeType: "application/pdf", buffer: createTextPdf(["EDF", "Facture electricite du foyer", "Montant a payer : 124,30 EUR", "Prelevement le 21 septembre 2026"]) });
+  await page.getByText("Informations repérées · à confirmer", { exact: true }).waitFor();
+  await page.getByLabel("Fournisseur", { exact: true }).waitFor();
+  if (await page.getByLabel("Fournisseur", { exact: true }).inputValue() !== "EDF") throw new Error("Le fournisseur du contrat n'a pas été extrait.");
+  await page.getByRole("button", { name: "Confirmer et ranger" }).click();
+  await page.getByRole("heading", { name: "Le document est au bon endroit." }).waitFor();
+  await closeCompletedFlow(page);
+  await page.getByRole("button", { name: /^Électricité/ }).first().click();
+  await page.getByText("124,30 €", { exact: true }).first().waitFor();
+
+  await page.getByRole("button", { name: "Ajouter un contrat" }).first().click();
+  await page.getByRole("button", { name: /^Eau/ }).last().click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByRole("button", { name: "Ajouter ce contrat" }).click();
+  await page.getByRole("heading", { name: "Eau est maintenant suivi." }).waitFor();
+  await page.getByRole("button", { name: "Terminer" }).click();
+
   await page.getByRole("button", { name: /^Maintenance/ }).click();
   await page.getByRole("button", { name: "Signaler un problème" }).first().click();
   await page.getByRole("button", { name: /Fuite d'eau/ }).click();
@@ -108,6 +148,11 @@ try {
   await page.getByRole("button", { name: /Continuer/ }).click();
   await page.getByRole("button", { name: /Prévenir le foyer/ }).click();
   await page.getByRole("button", { name: /Fuite d'eau/ }).waitFor();
+  await page.getByRole("button", { name: "Planifier", exact: true }).click();
+  await page.getByRole("button", { name: /Une routine/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Planifier", exact: true }).click();
+  await page.getByRole("heading", { name: "Vendredi à 18:30." }).waitFor();
+  await closeCompletedFlow(page);
 
   await page.getByRole("button", { name: "Équipements", exact: true }).click();
   await page.getByRole("button", { name: "Ajouter un équipement" }).first().click();
@@ -135,19 +180,40 @@ try {
   await page.getByRole("heading", { name: "Vendredi soir est réservé." }).waitFor();
   await closeCompletedFlow(page);
   await page.getByRole("button", { name: "Ajouter un document" }).click();
-  await page.getByRole("button", { name: "Choisir un fichier" }).click();
-  await page.getByRole("button", { name: "Valider et ranger" }).click();
-  await page.getByRole("heading", { name: "L'autorisation est rangée." }).waitFor();
+  await page.getByLabel("Fichier à analyser").setInputFiles(path.join(fixtures, "autorisation-sortie.txt"));
+  await page.getByRole("button", { name: "Confirmer et ranger" }).click();
+  await page.getByRole("heading", { name: /est rangé/ }).waitFor();
   await closeCompletedFlow(page);
 
   await page.getByRole("button", { name: "Abonnements", exact: true }).click();
   await page.getByRole("button", { name: "Ajouter un abonnement" }).first().click();
+  await page.getByLabel("Fichier à analyser").setInputFiles(path.join(fixtures, "abonnement-netflix.txt"));
+  await page.getByText("Informations repérées · à confirmer", { exact: true }).waitFor();
+  await page.getByLabel("Service", { exact: true }).waitFor();
+  if (await page.getByLabel("Service", { exact: true }).inputValue() !== "Netflix") throw new Error("Le service d'abonnement n'a pas été extrait.");
   await page.getByRole("button", { name: "Ajouter l'abonnement" }).click();
-  await page.getByRole("heading", { name: "Disney+ est suivi." }).waitFor();
+  await page.getByRole("heading", { name: "Netflix est suivi." }).waitFor();
   await closeCompletedFlow(page);
-  await page.getByRole("button", { name: /Disney\+/ }).waitFor();
+  await page.getByText("15,99 €", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Décider" }).click();
+  await page.getByRole("button", { name: "Garder l'abonnement" }).click();
+  await page.getByRole("heading", { name: "Netflix reste dans le foyer." }).waitFor();
+  await closeCompletedFlow(page);
 
   await page.getByRole("button", { name: "Finances", exact: true }).click();
+  await page.getByRole("button", { name: "Importer une facture" }).click();
+  await page.getByLabel("Fichier à analyser").setInputFiles(path.join(fixtures, "facture-plombier.txt"));
+  await page.getByText("Informations repérées · à confirmer", { exact: true }).waitFor();
+  await page.getByLabel("Montant", { exact: true }).waitFor();
+  if (await page.getByLabel("Montant", { exact: true }).inputValue() !== "87,5") throw new Error("Le montant de la facture n'a pas été extrait.");
+  await page.getByRole("button", { name: "Confirmer la dépense" }).click();
+  await page.getByRole("heading", { name: /est pris en compte/ }).waitFor();
+  await closeCompletedFlow(page);
+  await page.getByText("87,50 €", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Retrouver" }).click();
+  await page.getByLabel("Rechercher un paiement").fill("plombier");
+  await page.getByText("Importé depuis un document", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Terminer" }).click();
   await page.getByRole("button", { name: "Voir et ajuster" }).click();
   await page.getByRole("button", { name: "Continuer" }).click();
   await page.getByRole("button", { name: /Selon les revenus/ }).click();
@@ -159,29 +225,42 @@ try {
   await waitForImages(page);
   await page.screenshot({ path: `${output}/desktop-connected-workflows.png`, fullPage: true });
 
-  recordCount = await page.evaluate(async ({ url, key: apiKey }) => {
+  const persisted = await page.evaluate(async ({ url, key: apiKey }) => {
     const authKey = Object.keys(localStorage).find((item) => item.endsWith("-auth-token"));
-    if (!authKey) return -1;
+    if (!authKey) return [];
     const session = JSON.parse(localStorage.getItem(authKey) || "{}");
-    const response = await fetch(`${url}/rest/v1/circle_records?select=id`, { headers: { apikey: apiKey, Authorization: `Bearer ${session.access_token}` } });
+    const response = await fetch(`${url}/rest/v1/circle_records?select=id,kind,payload`, { headers: { apikey: apiKey, Authorization: `Bearer ${session.access_token}` } });
     const rows = await response.json();
-    return Array.isArray(rows) ? rows.length : -2;
+    return Array.isArray(rows) ? rows : [];
   }, { url: supabaseURL, key: publishableKey });
+  recordCount = persisted.length;
+  uploadedPaths = [...new Set(persisted.map((record) => record.payload?.storagePath).filter(Boolean))];
+  uploadedFileCount = uploadedPaths.length;
 
-  const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR", storageState: await context.storageState() });
-  const mobilePage = await mobile.newPage();
-  bindErrors(mobilePage);
-  await mobilePage.goto(baseURL, { waitUntil: "domcontentloaded" });
-  await mobilePage.getByRole("button", { name: /Foyer test Circle/ }).click();
-  await mobilePage.getByRole("heading", { name: "Foyer test Circle" }).waitFor();
-  await waitForImages(mobilePage);
-  await mobilePage.screenshot({ path: `${output}/mobile-household.png`, fullPage: false });
-  await mobile.close();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await waitForImages(page);
+  await page.screenshot({ path: `${output}/mobile-household.png`, fullPage: false });
+  await page.getByRole("button", { name: "Habitation", exact: true }).click();
+  await page.getByRole("heading", { name: "La maison est prête." }).waitFor();
+  await page.getByRole("button", { name: "Abonnements", exact: true }).click();
+  await page.getByRole("heading", { name: "Seulement l'utile." }).waitFor();
+  await page.getByRole("button", { name: "Finances", exact: true }).click();
+  await page.getByRole("heading", { name: "Ce mois-ci tient debout." }).waitFor();
+  await page.screenshot({ path: `${output}/mobile-finance.png`, fullPage: true });
   await context.close();
 } finally {
   await browser.close();
-  for (const userId of createdUserIds) await admin.auth.admin.deleteUser(userId);
+  if (uploadedPaths.length) await admin.storage.from("circle-documents").remove(uploadedPaths);
+  for (const userId of createdUserIds) {
+    const { data: ownedHouseholds } = await admin.from("circle_households").select("id").eq("owner_id", userId);
+    for (const household of ownedHouseholds || []) {
+      const folder = `${userId}/${household.id}`;
+      const { data: files } = await admin.storage.from("circle-documents").list(folder, { limit: 1000 });
+      if (files?.length) await admin.storage.from("circle-documents").remove(files.map((file) => `${folder}/${file.name}`));
+    }
+    await admin.auth.admin.deleteUser(userId);
+  }
 }
 
-console.log(JSON.stringify({ baseURL, recordCount, browserErrors: errors, screenshots: output }, null, 2));
-if (recordCount < 6 || errors.length) process.exitCode = 1;
+console.log(JSON.stringify({ baseURL, recordCount, uploadedFileCount, browserErrors: errors, screenshots: output }, null, 2));
+if (recordCount < 12 || uploadedFileCount < 4 || errors.length) process.exitCode = 1;
