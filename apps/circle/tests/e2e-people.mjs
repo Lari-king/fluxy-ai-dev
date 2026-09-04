@@ -153,7 +153,7 @@ try {
   const cardBox = await mobileCard.boundingBox();
   const artBox = await mobileCard.locator("img").boundingBox();
   if (!cardBox || cardBox.height > 210) throw new Error(`Carte foyer mobile trop haute : ${cardBox?.height}`);
-  if (!artBox || artBox.width > 115) throw new Error(`Illustration foyer mobile trop large : ${artBox?.width}`);
+  if (artBox) throw new Error(`L'illustration du foyer réserve encore ${artBox.width}px sur mobile.`);
   const scrollWidth = await mobilePage.evaluate(() => document.documentElement.scrollWidth);
   if (scrollWidth > 403) throw new Error(`Débordement horizontal mobile : ${scrollWidth}px`);
   await mobilePage.screenshot({ path: `${output}/mobile-households.png`, fullPage: false });
