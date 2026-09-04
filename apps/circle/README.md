@@ -26,7 +26,7 @@ npm run build
 SUPABASE_SERVICE_ROLE_KEY=... CIRCLE_BASE_URL=http://127.0.0.1:8098 npm run test:e2e
 ```
 
-Le parcours E2E crée un utilisateur confirmé isolé, un foyer, puis vérifie les workflows de maintenance, équipement, amélioration, école, document, abonnement et finances. Il contrôle leur persistance Supabase ainsi que les vues ordinateur et mobile, puis supprime le compte de test. Ajouter `CIRCLE_TEST_CONFIRMATION=1` pour vérifier aussi, avec une réponse Auth simulée sans envoi d'e-mail, l'écran affiché quand une inscription attend sa confirmation.
+Le parcours E2E crée un utilisateur confirmé isolé, un foyer, puis vérifie les workflows de maintenance, équipement, amélioration, école, document, abonnement et finances. Il contrôle leur persistance Supabase ainsi que les vues ordinateur et mobile, puis supprime le compte de test. Ajouter `CIRCLE_TEST_CONFIRMATION=1` pour vérifier aussi, avec une réponse Auth simulée sans envoi d'e-mail, l'écran affiché quand une inscription attend sa confirmation. Ajouter `CIRCLE_TEST_PUBLIC_SIGNUP=1` pour passer par une véritable création de compte publique en mode bêta privée.
 
 ## Déploiement
 
@@ -40,4 +40,4 @@ Le dossier `dist/` est publié dans le projet Cloudflare Pages `circle-family`. 
 
 Les migrations se trouvent dans `supabase/migrations/`. Elles créent les profils, foyers, membres et enregistrements métier, avec isolation RLS par foyer, rôles d'accès, publication temps réel et anonymisation de l'auteur lors de la suppression d'un compte.
 
-La bêta connecte l'authentification avec confirmation d'adresse e-mail, le multi-foyer et les principaux workflows: maintenance, passages et routines, contrats et documents, équipements, améliorations, école, abonnements, répartition financière, disponibilités et demandes d'aide. Les exemples éditoriaux restent visibles comme état de démonstration; les actions de l'utilisateur les enrichissent avec des données persistées et isolées par foyer.
+La bêta privée connecte l'authentification, le multi-foyer et les principaux workflows: maintenance, passages et routines, contrats et documents, équipements, améliorations, école, abonnements, répartition financière, disponibilités et demandes d'aide. La confirmation d'adresse reste désactivée pendant les tests privés afin de ne pas dépendre du quota e-mail partagé de Supabase; elle devra être réactivée avec un SMTP dédié avant l'ouverture publique. Les exemples éditoriaux restent visibles comme état de démonstration; les actions de l'utilisateur les enrichissent avec des données persistées et isolées par foyer.

@@ -277,9 +277,12 @@ h1, h2, h3, p { letter-spacing: 0; }
 .auth-panel h2 { margin: 10px 0 7px; font-size: 36px; line-height: 1.05; }
 .auth-panel > p { margin: 0 0 28px; color: var(--muted); line-height: 1.55; }
 .auth-panel form { display: grid; gap: 16px; }
-.auth-panel label { display: grid; gap: 7px; font-size: 10px; font-weight: 850; }
-.auth-panel label > div { min-height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--forest); }
+.auth-field { display: grid; gap: 7px; }
+.auth-field > label { font-size: 10px; font-weight: 850; }
+.auth-field > div { min-height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--forest); }
 .auth-panel input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: 14px; }
+.password-toggle { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; margin-right: -7px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.password-toggle:hover, .password-toggle:focus-visible { background: var(--mint); color: var(--forest); }
 .auth-panel .landing-primary { width: 100%; min-height: 52px; justify-content: center; margin-top: 5px; }
 .auth-switch { align-self: center; margin-top: 19px; border: 0; background: transparent; color: var(--forest); font-size: 11px; font-weight: 850; }
 .auth-panel > small { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 36px; color: var(--muted); }
@@ -506,12 +509,12 @@ h1, h2, h3, p { letter-spacing: 0; }
 .urgency-choice b { font-size: 14px; font-weight: 650; }
 .plan-kind b { font-weight: 700; }
 
-.landing { min-height: 100vh; background: var(--forest-dark); color: white; }
+.landing { min-height: 100vh; display: flex; flex-direction: column; background: var(--forest-dark); color: white; }
 .landing > header { height: 76px; position: absolute; inset: 0 0 auto; z-index: 3; display: flex; align-items: center; justify-content: space-between; padding: 0 max(32px,6vw); }
 .landing .brand { color: white; }
 .landing > header nav { display: flex; align-items: center; gap: 15px; }
 .landing > header nav > button:first-child, .landing-hero > div > div > button:last-child { border: 0; background: transparent; color: white; font-weight: 700; }
-.landing-hero { min-height: min(820px,92vh); position: relative; display: grid; align-items: center; overflow: hidden; }
+.landing-hero { min-height: calc(100svh - 82px); position: relative; display: grid; align-items: center; overflow: hidden; }
 .landing-hero > img { width: 100%; height: 100%; position: absolute; inset: 0; object-fit: cover; object-position: center; }
 .landing-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg,rgba(7,42,34,.2),transparent 52%); }
 .landing-hero > div { width: min(610px,44vw); position: relative; z-index: 2; margin-left: max(32px,6vw); }
@@ -522,14 +525,10 @@ h1, h2, h3, p { letter-spacing: 0; }
 .landing-hero > div > div { display: flex; gap: 14px; margin: 26px 0 18px; }
 .landing-primary { min-height: 50px; display: inline-flex; align-items: center; gap: 8px; padding: 0 19px; border: 0; border-radius: 7px; background: var(--coral); color: white; font-weight: 850; }
 .landing-hero > div > small { display: flex; align-items: center; gap: 7px; color: #bdd0c8; }
-.landing-next { min-height: 340px; padding: 55px max(32px,6vw); background: var(--paper); color: var(--ink); }
-.landing-next > span { color: var(--forest); font-weight: 850; }
-.landing-next > h2 { max-width: 700px; margin: 8px 0 35px; font-size: 42px; }
-.landing-next > div { display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid var(--line); }
-.landing-next article { padding: 24px 24px 0 0; }
-.landing-next article svg { color: var(--forest); }
-.landing-next article b { display: block; margin-top: 12px; }
-.landing-next article p { color: var(--muted); }
+.landing-footer { min-height: 82px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 28px; padding: 18px max(32px,6vw); background: var(--paper); color: var(--muted); font-size: 11px; }
+.landing-footer nav { display: flex; align-items: center; justify-content: center; gap: clamp(14px,2.3vw,34px); }
+.landing-footer a { color: var(--ink); text-decoration: none; }
+.landing-footer a:hover, .landing-footer a:focus-visible { color: var(--forest); text-decoration: underline; text-underline-offset: 4px; }
 
 .households-page { width: min(1300px,calc(100% - 40px)); min-height: calc(100vh - 36px); margin: 18px auto; background: var(--shell); box-shadow: 0 18px 50px rgba(25,48,35,.08); }
 .households-page > header { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 34px; border-bottom: 1px solid var(--line); background: var(--paper); }
@@ -633,7 +632,7 @@ h1, h2, h3, p { letter-spacing: 0; }
   .landing > header .brand span { font-size: 26px; }
   .landing > header nav > button:first-child { display: none; }
   .landing > header nav .secondary-button { min-height: 38px; padding: 0 11px; font-size: 10px; }
-  .landing-hero { min-height: 780px; align-items: end; }
+  .landing-hero { min-height: 720px; align-items: end; }
   .landing-hero > img { object-position: 63% 50%; }
   .landing-hero::after { background: linear-gradient(0deg,rgba(7,42,34,.98) 0%,rgba(7,42,34,.66) 50%,rgba(7,42,34,.05) 82%); }
   .landing-hero > div { width: auto; margin: 0; padding: 0 20px 52px; }
@@ -642,10 +641,9 @@ h1, h2, h3, p { letter-spacing: 0; }
   .landing-hero p { font-size: 13px; }
   .landing-hero > div > div { align-items: stretch; flex-direction: column; }
   .landing-hero > div > div > button:last-child { min-height: 42px; }
-  .landing-next { padding: 38px 20px; }
-  .landing-next > h2 { font-size: 30px; }
-  .landing-next > div { display: block; }
-  .landing-next article { min-height: 120px; border-bottom: 1px solid var(--line); }
+  .landing-footer { min-height: 142px; display: flex; align-items: flex-start; flex-direction: column; gap: 15px; padding: 22px 20px; }
+  .landing-footer nav { justify-content: flex-start; flex-wrap: wrap; gap: 11px 20px; }
+  .landing-footer > span:last-child { display: none; }
   .households-page { width: 100%; min-height: 100vh; margin: 0; }
   .households-page > header { height: 60px; padding: 0 16px; }
   .households-page .account-copy { display: none; }

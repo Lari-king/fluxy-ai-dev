@@ -11,7 +11,8 @@ const publishableKey = "sb_publishable_y9dNTWQzdlXSqWEU_SmLXg_gNskTQoC";
 const admin = createClient(supabaseURL, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const stamp = Date.now();
-const email = `circle.qa.${stamp}@example.com`;
+const publicSignup = process.env.CIRCLE_TEST_PUBLIC_SIGNUP === "1";
+const email = `circle.qa.${stamp}@${publicSignup ? "gmail.com" : "example.com"}`;
 const confirmEmail = `circle.confirm.${stamp}@gmail.com`;
 const password = `Circle-${stamp}-Test!`;
 const output = process.env.CIRCLE_TEST_OUTPUT || "/private/tmp/circle-e2e";
@@ -36,28 +37,59 @@ try {
     await confirmationPage.route("**/auth/v1/signup", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: { id: crypto.randomUUID(), aud: "authenticated", role: "authenticated", email: confirmEmail, app_metadata: { provider: "email", providers: ["email"] }, user_metadata: { full_name: "QA Confirmation" }, identities: [], created_at: new Date().toISOString() }, session: null }) });
     });
-    await confirmationPage.goto(baseURL, { waitUntil: "networkidle" });
+    await confirmationPage.goto(baseURL, { waitUntil: "domcontentloaded" });
+    await confirmationPage.getByText("Mentions légales", { exact: true }).waitFor();
     await confirmationPage.getByRole("button", { name: "Créer mon Circle" }).first().click();
     await confirmationPage.getByLabel("Votre prénom").fill("QA Confirmation");
     await confirmationPage.getByLabel("Adresse e-mail").fill(confirmEmail);
-    await confirmationPage.getByLabel("Mot de passe").fill(password);
+    await confirmationPage.locator("#auth-password").fill(password);
+    await confirmationPage.getByRole("button", { name: "Afficher le mot de passe" }).click();
+    if (await confirmationPage.locator("#auth-password").getAttribute("type") !== "text") throw new Error("Le mot de passe ne devient pas visible.");
     await confirmationPage.getByRole("button", { name: "Créer mon compte" }).click();
     await confirmationPage.getByRole("heading", { name: "Regardez votre boîte mail." }).waitFor();
     await confirmationContext.close();
   }
 
-  const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: "QA Circle" } });
-  if (createError || !created.user) throw createError || new Error("Le compte E2E n'a pas été créé.");
-  createdUserIds.push(created.user.id);
+  if (!publicSignup) {
+    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: "QA Circle" } });
+    if (createError || !created.user) throw createError || new Error("Le compte E2E n'a pas été créé.");
+    createdUserIds.push(created.user.id);
+  }
 
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "fr-FR" });
   const page = await context.newPage();
   bindErrors(page);
-  await page.goto(baseURL, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Se connecter" }).first().click();
-  await page.getByLabel("Adresse e-mail").fill(email);
-  await page.getByLabel("Mot de passe").fill(password);
-  await page.getByRole("button", { name: "Entrer dans Circle" }).click();
+  await page.goto(baseURL, { waitUntil: "domcontentloaded" });
+  await waitForImages(page);
+  const landingArt = page.locator(".landing-hero > img");
+  await landingArt.waitFor();
+  const landingImageSource = await landingArt.getAttribute("src");
+  if (!landingImageSource?.includes("circle-landing-family-v2.png")) throw new Error("La landing ne charge pas la nouvelle illustration.");
+  await page.screenshot({ path: `${output}/desktop-landing.png`, fullPage: true });
+
+  const mobileLanding = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR" });
+  const mobileLandingPage = await mobileLanding.newPage();
+  bindErrors(mobileLandingPage);
+  await mobileLandingPage.goto(baseURL, { waitUntil: "domcontentloaded" });
+  await waitForImages(mobileLandingPage);
+  await mobileLandingPage.screenshot({ path: `${output}/mobile-landing.png`, fullPage: true });
+  await mobileLanding.close();
+
+  if (publicSignup) {
+    await page.getByRole("button", { name: "Créer mon Circle" }).first().click();
+    await page.getByLabel("Votre prénom").fill("QA Circle");
+    await page.getByLabel("Adresse e-mail").fill(email);
+    await page.locator("#auth-password").fill(password);
+    await page.getByRole("button", { name: "Créer mon compte" }).click();
+    const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const signedUpUser = users.users.find((user) => user.email === email);
+    if (signedUpUser) createdUserIds.push(signedUpUser.id);
+  } else {
+    await page.getByRole("button", { name: "Se connecter" }).first().click();
+    await page.getByLabel("Adresse e-mail").fill(email);
+    await page.locator("#auth-password").fill(password);
+    await page.getByRole("button", { name: "Entrer dans Circle" }).click();
+  }
   await page.getByRole("heading", { name: "Commençons par votre foyer." }).waitFor();
   await page.getByLabel("Nom du foyer").fill("Foyer test Circle");
   await page.getByLabel("Ville").fill("Rouen");
@@ -139,7 +171,7 @@ try {
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR", storageState: await context.storageState() });
   const mobilePage = await mobile.newPage();
   bindErrors(mobilePage);
-  await mobilePage.goto(baseURL, { waitUntil: "networkidle" });
+  await mobilePage.goto(baseURL, { waitUntil: "domcontentloaded" });
   await mobilePage.getByRole("button", { name: /Foyer test Circle/ }).click();
   await mobilePage.getByRole("heading", { name: "Foyer test Circle" }).waitFor();
   await waitForImages(mobilePage);
