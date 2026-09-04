@@ -55,7 +55,7 @@ interface CircleDataValue {
   records: CircleRecord[];
   selectHousehold: (id: string) => void;
   createHousehold: (input: { name: string; city: string; familyShape: string }) => Promise<void>;
-  addRecord: (input: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => Promise<void>;
+  addRecord: (input: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
   signOut: () => Promise<void>;
 }
 
@@ -136,10 +136,9 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
         created_by: session.user.id,
       }).select("*").single();
       if (error) throw error;
-      if (data) {
-        const created = data as CircleRecord;
-        setRecords((current) => [created, ...current.filter((record) => record.id !== created.id)]);
-      }
+      const created = data as CircleRecord;
+      setRecords((current) => [created, ...current.filter((record) => record.id !== created.id)]);
+      return created;
     } finally {
       setSyncing(false);
     }

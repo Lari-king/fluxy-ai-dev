@@ -23,10 +23,10 @@ Les variables publiques Vite sont disponibles dans le tableau de bord Supabase. 
 ```bash
 npm run typecheck
 npm run build
-CIRCLE_BASE_URL=http://127.0.0.1:8098 npm run test:e2e
+SUPABASE_SERVICE_ROLE_KEY=... CIRCLE_BASE_URL=http://127.0.0.1:8098 npm run test:e2e
 ```
 
-Le parcours E2E crée un utilisateur isolé, un foyer, un signalement de maintenance et une réservation scolaire. Il vérifie ensuite leur persistance Supabase ainsi que les vues ordinateur et mobile.
+Le parcours E2E crée un utilisateur confirmé isolé, un foyer, puis vérifie les workflows de maintenance, équipement, amélioration, école, document, abonnement et finances. Il contrôle leur persistance Supabase ainsi que les vues ordinateur et mobile, puis supprime le compte de test. Ajouter `CIRCLE_TEST_CONFIRMATION=1` pour vérifier aussi, avec une réponse Auth simulée sans envoi d'e-mail, l'écran affiché quand une inscription attend sa confirmation.
 
 ## Déploiement
 
@@ -40,4 +40,4 @@ Le dossier `dist/` est publié dans le projet Cloudflare Pages `circle-family`. 
 
 Les migrations se trouvent dans `supabase/migrations/`. Elles créent les profils, foyers, membres et enregistrements métier, avec isolation RLS par foyer, rôles d'accès, publication temps réel et anonymisation de l'auteur lors de la suppression d'un compte.
 
-La bêta connecte déjà l'authentification, le multi-foyer, les signalements de maintenance, les réservations scolaires et l'ajout de contrats. Les autres contenus riches de la maquette restent des données de démonstration jusqu'à leur raccordement progressif aux mêmes primitives métier.
+La bêta connecte l'authentification avec confirmation d'adresse e-mail, le multi-foyer et les principaux workflows: maintenance, passages et routines, contrats et documents, équipements, améliorations, école, abonnements, répartition financière, disponibilités et demandes d'aide. Les exemples éditoriaux restent visibles comme état de démonstration; les actions de l'utilisateur les enrichissent avec des données persistées et isolées par foyer.
