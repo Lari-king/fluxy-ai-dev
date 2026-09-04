@@ -68,6 +68,22 @@ try {
   await page.getByRole("heading", { name: "Qui fait partie de ce foyer ?" }).waitFor();
   await assertNoDemoData(page);
 
+  const peopleArts = [];
+  for (const tab of ["Aujourd'hui", "Profils", "Agenda", "Entourage"]) {
+    await page.getByRole("button", { name: tab, exact: true }).click();
+    const image = page.locator(".people-empty > img");
+    await image.evaluate((element) => element.decode());
+    const source = await image.getAttribute("src");
+    if (!source) throw new Error(`Le bandeau ${tab} n'a pas d'illustration.`);
+    peopleArts.push(source);
+  }
+  if (new Set(peopleArts).size !== peopleArts.length) throw new Error(`Illustrations réutilisées dans Personnes : ${peopleArts.join(", ")}`);
+  if (peopleArts.includes("/art/circle-trusted-ring-v1.png")) throw new Error("L'illustration du foyer est réutilisée dans un onglet Personnes.");
+  await page.getByRole("button", { name: "Agenda", exact: true }).click();
+  if (await page.locator(".real-calendar > header").count()) throw new Error("L'ancien bandeau blanc de l'Agenda est encore rendu.");
+  if (await page.getByRole("button", { name: "Ajouter", exact: true }).count()) throw new Error("Le bouton Ajouter redondant de l'Agenda est encore rendu.");
+  await page.getByRole("button", { name: "Aujourd'hui", exact: true }).click();
+
   await page.getByRole("button", { name: "Centre de notifications" }).click();
   await page.getByRole("heading", { name: "Rien à signaler." }).waitFor();
   await page.getByRole("button", { name: "Fermer", exact: true }).last().click();

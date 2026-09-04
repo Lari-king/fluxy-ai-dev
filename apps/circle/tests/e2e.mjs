@@ -281,7 +281,7 @@ try {
   await page.getByRole("heading", { name: "Enfant QA" }).waitFor();
   await page.screenshot({ path: `${output}/mobile-profile.png`, fullPage: false });
   await page.getByRole("button", { name: "Agenda", exact: true }).click();
-  await page.getByRole("heading", { name: "Les moments partagés" }).waitFor();
+  await page.getByText("Rendez-vous QA", { exact: true }).waitFor();
   await auditMobileLayout(page, "agenda");
   await page.screenshot({ path: `${output}/mobile-calendar.png`, fullPage: false });
   await page.getByRole("button", { name: "Entourage", exact: true }).click();
