@@ -53,8 +53,15 @@ Le sélecteur de foyers, le bandeau du foyer, les notifications et tout l'espace
 
 ## Assistant École
 
-L'assistant interroge directement l'Annuaire de l'Éducation nationale à partir de la ville et du nom saisis. L'utilisateur choisit l'établissement proposé avant toute sauvegarde. L'identifiant UAI, l'adresse, le téléphone, l'e-mail, le statut et les indications disponibles sur la restauration conservent leur provenance et leur date de mise à jour.
+L'assistant interroge l'Annuaire de l'Éducation nationale à partir de la ville et du nom saisis. L'utilisateur choisit l'établissement proposé avant toute sauvegarde. L'identifiant UAI, l'adresse, le téléphone, l'e-mail, le statut et les indications disponibles sur la restauration conservent leur provenance et leur date de mise à jour.
 
-Rouen et Paris disposent en plus d'un guide municipal explicite reliant le portail famille, les règles de réservation et la facturation. Dans les autres villes, l'annuaire national fonctionne déjà, mais Circle laisse les règles locales à confirmer au lieu de les inventer. La prochaine évolution peut confier cette recherche municipale à une fonction serveur qui produit une proposition sourcée et datée; elle devra toujours demander la validation du parent avant d'écrire dans le profil.
+La fonction Supabase `school-enrichment-agent` complète ensuite la proposition avec les sources municipales. Rouen dispose d'un socle officiel intégré: horaires des accueils maternels, délai J-2, majoration sans réservation, portail famille et grille tarifaire par quotient. Tant que le quotient n'est pas renseigné, Circle applique le tarif maximal rouennais; la saisie du quotient recalcule immédiatement chaque service. Les réservations restent liées à une semaine datée et l'estimation mensuelle explique ses hypothèses.
+
+Si le secret serveur `GEMINI_API_KEY` est configuré sur le projet Supabase Circle, la fonction utilise Gemini avec Google Search et URL Context pour rechercher les règles locales publiées, puis renvoie un objet structuré et ses sources. Sans ce secret, elle reste sur les données officielles déterministes connues, sans exposer de clé au navigateur et sans inventer d'information. Dans tous les cas, le parent valide la proposition avant son enregistrement.
+
+```bash
+npx supabase secrets set GEMINI_API_KEY=... --project-ref mvlhzhayvthsxldfkqxe
+npx supabase functions deploy school-enrichment-agent --project-ref mvlhzhayvthsxldfkqxe
+```
 
 La suppression d'un foyer est réservée à son propriétaire et exige la saisie exacte de son nom. Les fichiers sont d'abord supprimés via l'API Storage autorisée, puis la fonction Supabase supprime le foyer et ses données relationnelles en cascade.

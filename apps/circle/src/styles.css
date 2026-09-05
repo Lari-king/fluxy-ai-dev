@@ -795,10 +795,23 @@ button, input, select, textarea { font: inherit; }
 .school-guide-preview > span { display: grid; gap: 3px; }
 .school-guide-preview small { color: #80733f; line-height: 1.45; }
 .school-guide-preview a { display: inline-flex; align-items: center; gap: 4px; color: var(--forest); font-size: 10px; font-weight: 850; text-decoration: none; }
+.school-guide-preview .text-button { min-height: 34px; padding: 0 8px; font-size: 10px; }
 .form-section-heading { display: grid; gap: 4px; margin-top: 6px; padding-top: 18px; border-top: 1px solid var(--line); }
 .form-section-heading h3 { margin: 0; font-size: 19px; }
 .form-section-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .school-booking-flow--live .booking-wednesday.active { border-color: var(--forest); background: var(--mint); }
+.field-help { color: var(--muted); font-size: 10px; font-weight: 500; line-height: 1.4; text-transform: none; }
+.booking-guidance > label { display: grid; gap: 4px; color: var(--forest); font-size: 9px; font-weight: 850; text-transform: uppercase; }
+.booking-guidance > label input { min-height: 38px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: white; color: var(--ink); font: inherit; }
+.school-cost-flow { gap: 15px; }
+.school-cost-explainer { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 11px; padding: 15px; border-radius: 7px; background: #fff3c2; color: #6f6025; }
+.school-cost-explainer > span { display: grid; gap: 4px; }
+.school-cost-explainer small { line-height: 1.45; }
+.school-rate-grid { display: grid; grid-template-columns: repeat(4,1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: white; }
+.school-rate-grid > span { display: grid; gap: 5px; min-height: 78px; align-content: center; padding: 12px; border-right: 1px solid var(--line); }
+.school-rate-grid > span:last-child { border-right: 0; }
+.school-rate-grid small { color: var(--muted); }
+.school-rate-grid b { color: var(--forest); font-size: 18px; }
 .school-holiday-list { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: white; }
 .school-holiday-list > header { min-height: 62px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; background: var(--mint); }
 .school-holiday-list > header > span { display: grid; gap: 3px; }
@@ -823,5 +836,6 @@ button, input, select, textarea { font: inherit; }
   .school-empty-state { min-height: 0; display: flex; flex-direction: column-reverse; margin: 10px -16px 0; border-right: 0; border-left: 0; border-radius: 0; }.school-empty-state > img { height: 170px; padding: 9px 16px; }.school-empty-state > div { padding: 23px 18px 27px; }.school-empty-state h2 { font-size: 29px; }.school-empty-state .primary-button { width: 100%; }
   .school-hub--live .school-identity { display: grid; }.school-identity__actions { width: 100%; justify-content: flex-start; }.school-identity__actions .secondary-button { min-width: 0; padding: 0 12px; font-size: 11px; }.school-identity__actions .secondary-button svg { display: block; }.school-source { line-height: 1.4; }.school-official-links { display: grid; padding: 16px; }.school-official-links > div { justify-content: flex-start; }.school-official-links a { min-height: 30px; }
   .school-assistant { margin: 0 -2px; padding: 14px; }.school-assistant__search { grid-template-columns: 1fr; }.school-assistant__search .primary-button { width: 100%; }.school-results > button { min-height: 72px; }.school-guide-preview { grid-template-columns: 24px minmax(0,1fr); }.school-guide-preview > a { grid-column: 2; }.form-section-heading { padding-top: 15px; }
+  .booking-guidance { grid-template-columns: 28px 1fr; }.booking-guidance > label { grid-column: 2; }.school-rate-grid { grid-template-columns: 1fr 1fr; }.school-rate-grid > span { border-bottom: 1px solid var(--line); }.school-rate-grid > span:nth-child(2n) { border-right: 0; }.school-rate-grid > span:nth-last-child(-n+2) { border-bottom: 0; }
   .households-page > footer { padding: 16px 20px calc(16px + env(safe-area-inset-bottom)); text-align: center; font-size: 10px; }
 }

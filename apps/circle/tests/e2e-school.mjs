@@ -76,6 +76,11 @@ try {
   const schoolResult = page.getByRole("button", { name: /Pépinières Saint Julien/i }).first();
   await schoolResult.waitFor({ timeout: 30_000 });
   await schoolResult.click();
+  await page.getByLabel("Tarif matin (€)").waitFor();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Tarif matin (€)"]')?.value === "0.64");
+  if (!((await page.getByLabel("Tranche appliquée").inputValue()).includes("tarif maximal provisoire"))) throw new Error("Le tarif maximal n'est pas appliqué sans quotient.");
+  await page.getByLabel("Quotient familial").fill("900");
+  if (await page.getByLabel("Tarif matin (€)").inputValue() !== "0.48") throw new Error("Le quotient ne recalcule pas le tarif du matin.");
 
   await page.getByLabel("Classe ou niveau").fill("Petite section");
   await page.getByLabel("Entrée ou point de rendez-vous").fill("Entrée côté jardin");
@@ -88,14 +93,7 @@ try {
   await page.getByLabel("Début du périscolaire").fill("16:30");
   await page.getByLabel("Première récupération").fill("17:05");
   await page.getByLabel("Créneau de récupération").fill("Entre 17:30 et 18:00");
-  await page.getByLabel("Quotient ou tranche").fill("851 - 1 150");
-  await page.getByLabel("Tarif matin (€)").fill("1.25");
-  await page.getByLabel("Tarif midi (€)").fill("3.40");
-  await page.getByLabel("Tarif soir (€)").fill("1.59");
-  await page.getByLabel("Tarif mercredi (€)").fill("13.14");
   await page.getByLabel("Personnes autorisées").fill("Aimé, Ludiviane, Marie");
-  await page.getByLabel("Référent périscolaire").fill("Laurent Ledemé");
-  await page.getByLabel("Dans son sac").fill("Change complet, pochette, doudou");
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
 
   await page.getByRole("heading", { name: /Pépinières Saint Julien/i }).waitFor();
@@ -111,6 +109,19 @@ try {
   await page.getByRole("heading", { name: "La semaine est claire." }).waitFor();
   await page.getByRole("button", { name: "Fermer", exact: true }).last().click();
   await page.getByText("Matin · Midi · Soir", { exact: true }).first().waitFor();
+  await page.getByRole("button", { name: "Comprendre et ajuster" }).click();
+  await page.getByLabel("Quotient familial pour le calcul").fill("900");
+  await page.getByRole("button", { name: "Mettre à jour le calcul" }).click();
+  await page.getByRole("heading", { name: "Tarification mise à jour" }).waitFor();
+  await page.getByRole("button", { name: "Fermer", exact: true }).last().click();
+
+  await page.locator(".school-memory > button").filter({ hasText: "Dans son sac" }).click();
+  await page.getByLabel("Contenu du sac").fill("Change complet, pochette, doudou");
+  await page.getByLabel("Référent périscolaire").fill("Laurent Ledemé");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await page.getByRole("heading", { name: "Repères enregistrés" }).waitFor();
+  await page.getByRole("button", { name: "Fermer", exact: true }).last().click();
+  await page.getByText("Change complet, pochette, doudou", { exact: true }).waitFor();
 
   await page.getByLabel("Ajouter un document").click();
   await page.getByLabel("Fichier à analyser").setInputFiles({
