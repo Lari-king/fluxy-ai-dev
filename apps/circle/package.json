@@ -10,6 +10,7 @@
     "typecheck": "tsc -b --pretty false",
     "test:e2e": "node tests/e2e.mjs",
     "test:e2e:people": "node tests/e2e-people.mjs",
+    "test:e2e:school": "node tests/e2e-school.mjs",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name circle-family --branch codex/circle-production --commit-dirty=true"
   },
   "dependencies": {

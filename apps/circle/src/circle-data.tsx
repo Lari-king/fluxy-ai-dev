@@ -31,6 +31,7 @@ export interface CircleHousehold {
   family_shape: string;
   cover_art: string;
   created_at: string;
+  membership_role?: "owner" | "admin" | "member" | "helper" | "viewer";
 }
 
 export interface CircleRecord {
@@ -56,6 +57,7 @@ interface CircleDataValue {
   overviewRecords: CircleRecord[];
   selectHousehold: (id: string) => void;
   createHousehold: (input: { name: string; city: string; familyShape: string }) => Promise<string>;
+  deleteHousehold: (id: string) => Promise<void>;
   addRecord: (input: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
   updateRecord: (id: string, input: { title?: string; status?: string; startsAt?: string | null; dueAt?: string | null; payload?: Record<string, unknown> }) => Promise<CircleRecord>;
   deleteRecord: (id: string) => Promise<void>;
@@ -85,7 +87,7 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     ]);
     if (error) throw error;
     if (profile?.display_name) setProfileName(profile.display_name);
-    const next = (memberships || []).flatMap((entry) => entry.household ? [entry.household as unknown as CircleHousehold] : []);
+    const next = (memberships || []).flatMap((entry) => entry.household ? [{ ...(entry.household as unknown as CircleHousehold), membership_role: entry.role as CircleHousehold["membership_role"] }] : []);
     setHouseholds(next);
     if (next.length) {
       const { data: overview } = await supabase.from("circle_records")
@@ -191,6 +193,40 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     }
   }, [load, profileName, session.user.id]);
 
+  const deleteHousehold = useCallback(async (id: string) => {
+    const household = households.find((item) => item.id === id);
+    if (!household || household.membership_role !== "owner") throw new Error("Seul le propriétaire peut supprimer ce foyer.");
+    setSyncing(true);
+    try {
+      const removeFolder = async (prefix: string) => {
+        const { data, error } = await supabase.storage.from("circle-documents").list(prefix, { limit: 1000 });
+        if (error) throw error;
+        const files = (data || []).filter((item) => item.id).map((item) => `${prefix}/${item.name}`);
+        const folders = (data || []).filter((item) => !item.id);
+        if (files.length) {
+          const { error: removeError } = await supabase.storage.from("circle-documents").remove(files);
+          if (removeError) throw removeError;
+        }
+        await Promise.all(folders.map((folder) => removeFolder(`${prefix}/${folder.name}`)));
+      };
+      const { data: memberFolders, error: folderError } = await supabase.storage.from("circle-documents").list("", { limit: 1000 });
+      if (folderError) throw folderError;
+      const roots = new Set((memberFolders || []).filter((item) => !item.id).map((item) => item.name));
+      roots.add(session.user.id);
+      await Promise.all([...roots].map((root) => removeFolder(`${root}/${id}`)));
+      const { error } = await supabase.rpc("circle_delete_household", { target_household_id: id });
+      if (error) throw error;
+      localStorage.removeItem("circle:active-household");
+      setRecords([]);
+      setOverviewRecords((current) => current.filter((record) => record.household_id !== id));
+      setHouseholds((current) => current.filter((item) => item.id !== id));
+      setActiveId((current) => current === id ? null : current);
+      await load();
+    } finally {
+      setSyncing(false);
+    }
+  }, [households, load, session.user.id]);
+
   const addRecord = useCallback(async ({ kind, title, status = "active", startsAt, dueAt, payload = {} }: { kind: CircleRecordKind; title: string; status?: string; startsAt?: string; dueAt?: string; payload?: Record<string, unknown> }) => {
     if (!activeHousehold) throw new Error("Aucun foyer sélectionné");
     setSyncing(true);
@@ -290,6 +326,7 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     overviewRecords,
     selectHousehold: setActiveId,
     createHousehold,
+    deleteHousehold,
     addRecord,
     updateRecord,
     deleteRecord,
@@ -297,7 +334,7 @@ export function CircleDataProvider({ session, children }: PropsWithChildren<{ se
     uploadProfileImage,
     deleteStoredFile,
     signOut: async () => { await supabase.auth.signOut(); },
-  }), [session, loading, syncing, profileName, households, activeHousehold, records, overviewRecords, createHousehold, addRecord, updateRecord, deleteRecord, uploadDocument, uploadProfileImage, deleteStoredFile]);
+  }), [session, loading, syncing, profileName, households, activeHousehold, records, overviewRecords, createHousehold, deleteHousehold, addRecord, updateRecord, deleteRecord, uploadDocument, uploadProfileImage, deleteStoredFile]);
 
   return <CircleDataContext.Provider value={value}>{children}</CircleDataContext.Provider>;
 }
